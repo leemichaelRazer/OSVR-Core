@@ -32,6 +32,11 @@ endif()
 set(OSVR_PLUGIN_IGNORE_SUFFIX ".manualload" CACHE STRING "Suffix for plugins that shouldn't be loaded automatically")
 mark_as_advanced(OSVR_PLUGIN_IGNORE_SUFFIX)
 
+if(BUILD_SERVER AND NOT ANDROID)
+    set(BUILD_CAMERA_PLUGIN ON)
+    set(BUILD_VIDEOTRACKER_PLUGIN ON)
+endif()
+
 ###
 # CMake Modules
 ###
@@ -118,6 +123,28 @@ find_package(jsoncpp REQUIRED)
 
 include(CompilerFeatures)
 
+set(OPENCV_MODULES_USED opencv_core)
+
+# Extra OpenCV components.
+# We set this up here so that if we need to copy DLLs, we can do it in the main
+# library builds where it's easier to get the right directory on Windows in a build tree.
+if(BUILD_CAMERA_PLUGIN)
+    set(CAMERA_EXTRA_LIBS opencv_highgui opencv_imgproc)
+    list(APPEND OPENCV_MODULES_USED ${CAMERA_EXTRA_LIBS})
+endif()
+
+if(BUILD_VIDEOTRACKER_PLUGIN)
+    set(VIDEOTRACKER_EXTRA_LIBS
+        opencv_imgproc
+        opencv_features2d
+        opencv_calib3d
+        opencv_highgui
+        opencv_imgproc
+        opencv_flann)
+    list(APPEND OPENCV_MODULES_USED ${VIDEOTRACKER_EXTRA_LIBS})
+endif()
+
+list(REMOVE_DUPLICATES OPENCV_MODULES_USED)
 ###
 # Set up build directories
 ###
