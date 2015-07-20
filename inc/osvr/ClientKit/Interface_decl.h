@@ -74,6 +74,7 @@ namespace clientkit {
         OSVR_CALLBACK_METHODS(EyeTracker2D)
         OSVR_CALLBACK_METHODS(EyeTracker3D)
         OSVR_CALLBACK_METHODS(EyeTrackerBlink)
+        OSVR_CALLBACK_METHODS(Gesture)
 /// @}
 
 #undef OSVR_CALLBACK_METHODS

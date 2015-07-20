@@ -47,7 +47,7 @@
 OSVR_EXTERN_C_BEGIN
 
 #define OSVR_CALLBACK_METHODS(TYPE)                                            \
-    /** @brief Get TYPE state from an interface, returning failure if none     \
+    /** @brief Get TYPE state from an interface, returning failure if none \                                                                             \
      * exists */                                                               \
     OSVR_CLIENTKIT_EXPORT OSVR_ReturnCode osvrGet##TYPE##State(                \
         OSVR_ClientInterface iface, struct OSVR_TimeValue *timestamp,          \
@@ -63,6 +63,7 @@ OSVR_CALLBACK_METHODS(Direction)
 OSVR_CALLBACK_METHODS(EyeTracker2D)
 OSVR_CALLBACK_METHODS(EyeTracker3D)
 OSVR_CALLBACK_METHODS(EyeTrackerBlink)
+OSVR_CALLBACK_METHODS(Gesture)
 
 #undef OSVR_CALLBACK_METHODS
 

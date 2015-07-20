@@ -200,6 +200,22 @@ typedef struct OSVR_EyeTrackerBlinkReport {
 /** @brief C function type for a callback for EyeTrackerBlink */
 OSVR_DEFINE_CLIENT_CALLBACK_TYPE(EyeTrackerBlink);
 
+/** @brief Type of string to identify gesture name */
+typedef char const *OSVR_GestureName;
+
+/** @brief Type of Gesture state */
+typedef uint8_t OSVR_GestureState;
+
+/** @brief Report type for a gesture event */
+typedef struct OSVR_GestureReport {
+    OSVR_GestureName gestureName;
+    OSVR_GestureState state;
+    OSVR_ChannelCount sensor;
+} OSVR_GestureReport;
+
+/** @brief C function type for a callback for Gesture event */
+OSVR_DEFINE_CLIENT_CALLBACK_TYPE(Gesture);
+
 #undef OSVR_DEFINE_CALLBACK
 /** @} */
 OSVR_EXTERN_C_END
