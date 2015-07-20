@@ -5,6 +5,7 @@ set(OSVR_EXAMPLE_DEVICE_PLUGINS_SIMPLE
 set(OSVR_EXAMPLE_DEVICE_PLUGINS
     com_osvr_example_AnalogSync
     com_osvr_example_EyeTracker
+    com_osvr_example_Gesture
     com_osvr_example_selfcontainedDetectAndCreate
     ${OSVR_EXAMPLE_DEVICE_PLUGINS_SIMPLE}
     CACHE INTERNAL "" FORCE)
@@ -42,6 +43,21 @@ osvr_add_plugin(NAME com_osvr_example_EyeTracker
 set_target_properties(com_osvr_example_EyeTracker PROPERTIES
     FOLDER "OSVR Example Plugins")
 target_compile_options(com_osvr_example_EyeTracker
+    PRIVATE
+    ${OSVR_CXX11_FLAGS})
+    
+## Build the gesture example
+osvr_convert_json(com_osvr_example_Gesture_json
+    com_osvr_example_Gesture.json
+    "${CMAKE_CURRENT_BINARY_DIR}/com_osvr_example_Gesture_json.h")
+osvr_add_plugin(NAME com_osvr_example_Gesture
+    NO_INSTALL MANUAL_LOAD CPP
+    SOURCES
+    com_osvr_example_Gesture.cpp
+    "${CMAKE_CURRENT_BINARY_DIR}/com_osvr_example_Gesture_json.h")
+set_target_properties(com_osvr_example_Gesture PROPERTIES
+    FOLDER "OSVR Example Plugins")
+target_compile_options(com_osvr_example_Gesture
     PRIVATE
     ${OSVR_CXX11_FLAGS})
 
