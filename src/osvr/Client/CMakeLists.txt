@@ -13,6 +13,8 @@ set(SOURCE
     DirectionRemoteFactory.h
     EyeTrackerRemoteFactory.cpp
     EyeTrackerRemoteFactory.h
+    GestureRemoteFactory.cpp
+    GestureRemoteFactory.h
     HandlerContainer.h
     ImagingRemoteFactory.cpp
     ImagingRemoteFactory.h
