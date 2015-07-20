@@ -9,7 +9,8 @@ set(MAINCLIENTS
     Imaging
     EyeTracker
     Location2D
-    Direction)
+    Direction
+    Gesture)
 # These are "extra"
 set(CLIENTS
     MinimalInit
