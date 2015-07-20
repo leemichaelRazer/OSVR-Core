@@ -39,6 +39,7 @@ set(API
     "${HEADER_LOCATION}/DirectionComponent.h"
     "${HEADER_LOCATION}/Endianness.h"
     "${HEADER_LOCATION}/EyeTrackerComponent.h"
+    "${HEADER_LOCATION}/GestureComponent.h"
     "${HEADER_LOCATION}/GetEnvironmentVariable.h"
     "${HEADER_LOCATION}/ImagingComponent.h"
     "${HEADER_LOCATION}/IntegerByteSwap.h"
@@ -76,6 +77,7 @@ set(API
     "${HEADER_LOCATION}/ReportStateTraits.h"
     "${HEADER_LOCATION}/ReportTraits.h"
     "${HEADER_LOCATION}/ReportTypes.h"
+    "${HEADER_LOCATION}/RegisteredStringMap.h"
     "${HEADER_LOCATION}/ResolveFullTree.h"
     "${HEADER_LOCATION}/ResolveTreeNode.h"
     "${HEADER_LOCATION}/RouteContainer.h"
@@ -104,7 +106,8 @@ set(SOURCE
     DeviceWrapper.cpp
     DeviceWrapper.h
     DirectionComponent.cpp
-    EyeTrackerComponent.cpp    
+    EyeTrackerComponent.cpp
+    GestureComponent.cpp
     GetEnvironmentVariable.cpp
     GetJSONStringFromTree.h
     ImagingComponent.cpp
@@ -132,6 +135,7 @@ set(SOURCE
     ProcessDeviceDescriptor.cpp
     RawMessageType.cpp
     RawSenderType.cpp
+    RegisteredStringMap.cpp
     ResolveFullTree.cpp
     ResolveTreeNode.cpp
     RouteContainer.cpp
