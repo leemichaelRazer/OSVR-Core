@@ -34,6 +34,7 @@
 #include "ButtonRemoteFactory.h"
 #include "DirectionRemoteFactory.h"
 #include "EyeTrackerRemoteFactory.h"
+#include "GestureRemoteFactory.h"
 #include "ImagingRemoteFactory.h"
 #include "Location2DRemoteFactory.h"
 #include "TrackerRemoteFactory.h"
@@ -56,47 +57,49 @@
 namespace osvr {
 namespace client {
 
-    class LocalhostReplacer : public boost::static_visitor<>, boost::noncopyable
-    {
-    public:
-        LocalhostReplacer(const std::string &host) : boost::static_visitor<>(), m_host(host)
-        {
+    class LocalhostReplacer : public boost::static_visitor<>,
+                              boost::noncopyable {
+      public:
+        LocalhostReplacer(const std::string &host)
+            : boost::static_visitor<>(), m_host(host) {
             BOOST_ASSERT_MSG(
                 m_host.length() > 0,
                 "Cannot replace localhost with an empty host name!");
         }
 
-        /// @brief Replace localhost with proper hostname:port for Device elements
+        /// @brief Replace localhost with proper hostname:port for Device
+        /// elements
         void operator()(osvr::common::PathNode &,
-            osvr::common::elements::DeviceElement &elt)
-        {
+                        osvr::common::elements::DeviceElement &elt) {
             std::string &server = elt.getServer();
 
             auto it = server.find("localhost");
 
-            if (it != server.npos)
-            {
-                // Do a bit of surgery, only the "localhost" must be replaced, keeping
-                // the ":xxxx" part with the port number - the host could be running a local 
+            if (it != server.npos) {
+                // Do a bit of surgery, only the "localhost" must be replaced,
+                // keeping
+                // the ":xxxx" part with the port number - the host could be
+                // running a local
                 // VRPN/OSVR service on another port!
 
-                // We have to do it like this, because std::string::replace() has a silly undefined corner 
-                // case when the string we are replacing localhost with is shorter than the length of 
-                // string being replaced (see http://www.cplusplus.com/reference/string/string/replace/ )
+                // We have to do it like this, because std::string::replace()
+                // has a silly undefined corner
+                // case when the string we are replacing localhost with is
+                // shorter than the length of
+                // string being replaced (see
+                // http://www.cplusplus.com/reference/string/string/replace/ )
                 // Better be safe than sorry :(
 
-                server = boost::algorithm::ireplace_first_copy(server, "localhost", m_host);  // Go through a copy, just to be extra safe
+                server = boost::algorithm::ireplace_first_copy(
+                    server, "localhost",
+                    m_host); // Go through a copy, just to be extra safe
             }
         }
 
         /// @brief Catch-all for other element types.
-        template <typename T>
-        void operator()(osvr::common::PathNode &, T &) 
-        {
-        }        
+        template <typename T> void operator()(osvr::common::PathNode &, T &) {}
 
-
-    protected:
+      protected:
         const std::string m_host;
     };
 
@@ -117,6 +120,7 @@ namespace client {
         ButtonRemoteFactory(m_vrpnConns).registerWith(m_factory);
         ImagingRemoteFactory(m_vrpnConns).registerWith(m_factory);
         EyeTrackerRemoteFactory(m_vrpnConns).registerWith(m_factory);
+        GestureRemoteFactory(m_vrpnConns).registerWith(m_factory);
         Location2DRemoteFactory(m_vrpnConns).registerWith(m_factory);
         DirectionRemoteFactory(m_vrpnConns).registerWith(m_factory);
 
@@ -284,15 +288,15 @@ namespace client {
         // populate path tree from message
         common::jsonToPathTree(m_pathTree, nodes);
 
-        // replace the @localhost with the correct host name 
+        // replace the @localhost with the correct host name
         // in case we are a remote client, otherwise the connection
         // would fail
 
-        LocalhostReplacer replacer(m_host);        
-        util::traverseWith(
-            m_pathTree.getRoot(), [&replacer](osvr::common::PathNode &node) {
-            common::applyPathNodeVisitor(replacer, node);
-        });
+        LocalhostReplacer replacer(m_host);
+        util::traverseWith(m_pathTree.getRoot(),
+                           [&replacer](osvr::common::PathNode &node) {
+                               common::applyPathNodeVisitor(replacer, node);
+                           });
 
         // re-connect handlers.
         m_connectNeededCallbacks();
