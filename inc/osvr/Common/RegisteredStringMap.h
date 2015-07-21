@@ -39,10 +39,6 @@
 namespace osvr {
 namespace common {
 
-#define MAX_REGISTRY_SIZE 100
-
-    typedef char EntryName[100];
-
     /// idea from the
     /// http://www.ilikebigbits.com/blog/2014/5/6/type-safe-identifiers-in-c
     template <class Tag, class impl> class ID {
@@ -77,14 +73,8 @@ namespace common {
     typedef ID<struct StringTag, uint32_t> StringID;
     typedef ID<struct StringTag, uint32_t> PeerStringID;
 
-    /// create a container for string registry
-    /// store the name and id
-    typedef struct StringRegistry {
-        char *name;
-        StringID id;
-    } StringRegistry;
-
-    typedef std::vector<StringRegistry> RegistryList;
+    /// map<name, id>
+    typedef std::map<std::string, StringID> RegistryList;
 
     /// @todo change this to serialized bytestream in the future
     typedef Json::Value SerializedStringMap;

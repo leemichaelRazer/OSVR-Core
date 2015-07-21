@@ -49,8 +49,8 @@ namespace common {
         std::cout << "Current map contains " << m_regEntries.size()
                   << " entries: " << std::endl;
         for (auto &entry : m_regEntries) {
-            std::cout << "ID: " << uint32_t(entry.id) << "; "
-                      << "Name: " << entry.name << std::endl;
+            std::cout << "ID: " << uint32_t(entry.second) << "; "
+                      << "Name: " << entry.first << std::endl;
         }
     }
 
@@ -60,9 +60,8 @@ namespace common {
 
         for (auto &entry : m_regEntries) {
 
-            serializedMap[entry.name] = entry.id.m_val;
+            serializedMap[entry.first] = entry.second.m_val;
         }
-        // std::cout << serializedMap.toStyledString() << std::endl;
         return serializedMap;
     }
 
@@ -70,33 +69,24 @@ namespace common {
 
         // we've checked the entries before and haven't found so we'll just add
         // new one
-        StringRegistry newEntry;
-
-        newEntry.name = new EntryName;
-        strncpy(newEntry.name, str.c_str(), sizeof(EntryName) - 1);
-
-        // IDs start at 0 so no need to offset, it will just follow vector index
+        std::string name = str;
         StringID newID(m_regEntries.size());
-        newEntry.id = newID;
+
+        m_regEntries.insert(std::pair<std::string, StringID>(name, newID));
         m_numEntries++;
 
-        m_regEntries.push_back(newEntry);
-
-        // printCurrentMap();
         m_updateMap = true;
         return newID;
     }
 
     StringID RegisteredStringMap::getStringID(std::string const &str) {
 
-        // printCurrentMap();
-
         // check the existing registry first
         for (auto &entry : m_regEntries) {
             // found a matching name, NOTE: CaSe Sensitive
-            if (boost::equals(str, entry.name)) {
+            if (boost::equals(str, entry.first)) {
                 m_updateMap = false;
-                return entry.id;
+                return entry.second;
             }
         }
 
@@ -116,9 +106,9 @@ namespace common {
         // appending to the end, so we should be safe at pulling by vector index
 
         for (auto &entry : m_regEntries) {
-            if (entry.id == id) {
+            if (entry.second == id) {
                 // found name for this ID
-                return entry.name;
+                return entry.first;
             }
         }
         // returning empty string
