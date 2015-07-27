@@ -41,8 +41,8 @@
 // - none
 
 struct OSVR_LocomotionDeviceInterfaceObject
-	: public osvr::connection::DeviceInterfaceBase {
-	osvr::common::LocomotionComponent *locomotion;
+    : public osvr::connection::DeviceInterfaceBase {
+    osvr::common::LocomotionComponent *locomotion;
 };
 
 OSVR_ReturnCode osvrDeviceLocomotionConfigure(
@@ -51,13 +51,13 @@ OSVR_ReturnCode osvrDeviceLocomotionConfigure(
 
     OSVR_PLUGIN_HANDLE_NULL_CONTEXT("osvrDeviceLocomotionConfigure", opts);
     OSVR_PLUGIN_HANDLE_NULL_CONTEXT("osvrDeviceLocomotionConfigure", iface);
-	OSVR_LocomotionDeviceInterface ifaceObj =
-		opts->makeInterfaceObject<OSVR_LocomotionDeviceInterfaceObject>();
-	*iface = ifaceObj;
-	auto locomotion = osvr::common::LocomotionComponent::create();
-	ifaceObj->locomotion = locomotion.get();
-	opts->addComponent(locomotion);
-	return OSVR_RETURN_SUCCESS;
+    OSVR_LocomotionDeviceInterface ifaceObj =
+        opts->makeInterfaceObject<OSVR_LocomotionDeviceInterfaceObject>();
+    *iface = ifaceObj;
+    auto locomotion = osvr::common::LocomotionComponent::create();
+    ifaceObj->locomotion = locomotion.get();
+    opts->addComponent(locomotion);
+    return OSVR_RETURN_SUCCESS;
 }
 
 OSVR_ReturnCode osvrDeviceLocomotionReportNaviVelocity(
@@ -65,13 +65,14 @@ OSVR_ReturnCode osvrDeviceLocomotionReportNaviVelocity(
     OSVR_IN_PTR OSVR_NaviVelocityState naviVelocity,
     OSVR_IN OSVR_ChannelCount sensor,
     OSVR_IN_PTR OSVR_TimeValue const *timestamp) {
-	auto guard = iface->getSendGuard();
-	if (guard->lock()) {
-		iface->locomotion->sendNaviVelocityData(naviVelocity, sensor, *timestamp);
-		return OSVR_RETURN_SUCCESS;
-	}
+    auto guard = iface->getSendGuard();
+    if (guard->lock()) {
+        iface->locomotion->sendNaviVelocityData(naviVelocity, sensor,
+                                                *timestamp);
+        return OSVR_RETURN_SUCCESS;
+    }
 
-	return OSVR_RETURN_FAILURE;
+    return OSVR_RETURN_FAILURE;
 }
 
 OSVR_ReturnCode osvrDeviceLocomotionReportNaviPosition(
@@ -79,11 +80,12 @@ OSVR_ReturnCode osvrDeviceLocomotionReportNaviPosition(
     OSVR_IN_PTR OSVR_NaviPositionState naviPosition,
     OSVR_IN OSVR_ChannelCount sensor,
     OSVR_IN_PTR OSVR_TimeValue const *timestamp) {
-	auto guard = iface->getSendGuard();
-	if (guard->lock()) {
-		iface->locomotion->sendNaviPositionData(naviPosition, sensor, *timestamp);
-		return OSVR_RETURN_SUCCESS;
-	}
+    auto guard = iface->getSendGuard();
+    if (guard->lock()) {
+        iface->locomotion->sendNaviPositionData(naviPosition, sensor,
+                                                *timestamp);
+        return OSVR_RETURN_SUCCESS;
+    }
 
-	return OSVR_RETURN_FAILURE;
+    return OSVR_RETURN_FAILURE;
 }

@@ -78,8 +78,7 @@ OSVR_ReturnCode osvrDeviceLocomotionReportNaviVelocity(
     OSVR_IN_PTR OSVR_LocomotionDeviceInterface iface,
     OSVR_IN_PTR OSVR_NaviVelocityState naviVelocity,
     OSVR_IN OSVR_ChannelCount sensor,
-    OSVR_IN_PTR OSVR_TimeValue const *timestamp)
-    OSVR_FUNC_NONNULL((1, 4));
+    OSVR_IN_PTR OSVR_TimeValue const *timestamp) OSVR_FUNC_NONNULL((1, 4));
 /**
 
 /** @brief Report data for a specific sensor.
@@ -94,8 +93,7 @@ OSVR_ReturnCode osvrDeviceLocomotionReportNaviPosition(
     OSVR_IN_PTR OSVR_LocomotionDeviceInterface iface,
     OSVR_IN_PTR OSVR_NaviPositionState naviPosition,
     OSVR_IN OSVR_ChannelCount sensor,
-    OSVR_IN_PTR OSVR_TimeValue const *timestamp)
-    OSVR_FUNC_NONNULL((1, 4));
+    OSVR_IN_PTR OSVR_TimeValue const *timestamp) OSVR_FUNC_NONNULL((1, 4));
 /**
 
 @} */ /* end of group */
