@@ -142,8 +142,7 @@ namespace common {
             apply(OSVR_NaviVelocityReport const &r) {
                 return r.state;
             }
-            static OSVR_NaviVelocityState
-            apply(OSVR_NaviVelocityReport &r) {
+            static OSVR_NaviVelocityState apply(OSVR_NaviVelocityReport &r) {
                 return r.state;
             }
         };
@@ -154,8 +153,7 @@ namespace common {
             apply(OSVR_NaviPositionReport const &r) {
                 return r.state;
             }
-            static OSVR_NaviPositionState
-            apply(OSVR_NaviPositionReport &r) {
+            static OSVR_NaviPositionState apply(OSVR_NaviPositionReport &r) {
                 return r.state;
             }
         };

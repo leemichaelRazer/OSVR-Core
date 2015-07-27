@@ -213,7 +213,7 @@ typedef OSVR_Vec2 OSVR_NaviPositionState;
 /** @brief Report type for an navigation velocity callback on a tracker
  * interface */
 typedef struct OSVR_NaviVelocityReport {
-	OSVR_ChannelCount sensor;
+    OSVR_ChannelCount sensor;
     /** @brief The 2D vector in world coordinate system, in meters/second */
     OSVR_NaviVelocityState state;
 } OSVR_NaviVelocityReport;
@@ -221,7 +221,7 @@ typedef struct OSVR_NaviVelocityReport {
 /** @brief Report type for an navigation position callback on a tracker
  * interface */
 typedef struct OSVR_NaviPositionReport {
-	OSVR_ChannelCount sensor;
+    OSVR_ChannelCount sensor;
     /** @brief The 2D vector in world coordinate system, in meters, relative to
      * starting position */
     OSVR_NaviPositionState state;
