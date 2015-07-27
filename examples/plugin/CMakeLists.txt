@@ -43,6 +43,21 @@ set_target_properties(com_osvr_example_EyeTracker PROPERTIES
     FOLDER "OSVR Example Plugins")
 target_link_libraries(com_osvr_example_EyeTracker osvr_cxx11_flags)
 
+    
+    
+## Build the locomotion example
+osvr_convert_json(com_osvr_example_Locomotion_json
+    com_osvr_example_Locomotion.json
+    "${CMAKE_CURRENT_BINARY_DIR}/com_osvr_example_Locomotion_json.h")
+osvr_add_plugin(NAME com_osvr_example_Locomotion
+    NO_INSTALL MANUAL_LOAD CPP
+    SOURCES
+    com_osvr_example_Locomotion.cpp
+    "${CMAKE_CURRENT_BINARY_DIR}/com_osvr_example_Locomotion_json.h")
+set_target_properties(com_osvr_example_Locomotion PROPERTIES
+    FOLDER "OSVR Example Plugins")
+target_link_libraries(com_osvr_example_Locomotion osvr_cxx11_flags)
+
 ## Build the code from the selfcontained example
 osvr_convert_json(com_osvr_example_selfcontainedDetectAndCreate_json
     selfcontained/com_osvr_example_selfcontainedDetectAndCreate.json
