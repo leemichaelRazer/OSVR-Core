@@ -137,7 +137,7 @@ namespace client {
         shared_ptr<RemoteHandler> ret;
 
         if (source.hasTransform()) {
-            // @todo may need to handle transformation
+            /// @todo may need a transformation here for 2D vector
         }
 
         auto const &devElt = source.getDeviceElement();
