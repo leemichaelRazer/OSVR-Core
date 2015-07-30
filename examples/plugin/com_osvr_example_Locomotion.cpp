@@ -29,11 +29,13 @@
 
 // Standard includes
 #include <iostream>
+#include <chrono>
+#include <thread>
+#include <random>
+#include <ctime>
 
 // Anonymous namespace to avoid symbol collision
 namespace {
-
-OSVR_MessageType locomotionMessage;
 
 class LocomotionDevice {
   public:
@@ -51,20 +53,29 @@ class LocomotionDevice {
 
         /// Register update callback
         m_dev.registerUpdateCallback(this);
+
+		/// Seed pseduo random generator.
+		std::srand(std::time(0));
     }
 
     OSVR_ReturnCode update() {
 
+		std::this_thread::sleep_for(std::chrono::milliseconds(
+			250)); // Simulate waiting a quarter second for data.
+
         OSVR_TimeValue times;
         osvrTimeValueGetNow(&times);
+
+		int randVel = rand() % (int)(11);
+		int randPos = rand();
 
         OSVR_NaviVelocityState velo;
         OSVR_NaviPositionState posn;
 
-        velo.data[0] = 1.5;
-        velo.data[1] = 9.9;
-        posn.data[0] = 3.3;
-        posn.data[2] = 7.7;
+		velo.data[0] = randVel * std::abs(std::sin(randVel));
+		velo.data[1] = randVel * randVel * std::abs(std::sin(randVel));
+		posn.data[0] = std::abs(std::sin(randPos));
+		posn.data[1] = std::abs(std::cos(randPos));
 
         osvrDeviceLocomotionReportNaviVelocity(m_locomotion, velo, 0, &times);
 
@@ -107,8 +118,6 @@ class HardwareDetection {
 } // namespace
 
 OSVR_PLUGIN(com_osvr_example_Locomotion) {
-
-    osvrDeviceRegisterMessageType(ctx, "LocomotionMessage", &locomotionMessage);
 
     osvr::pluginkit::PluginContext context(ctx);
 
