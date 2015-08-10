@@ -48,6 +48,8 @@ target_link_libraries(${LIBNAME_FULL}
     PRIVATE
     osvrClient
     osvrUtilCpp
+    jsoncpp_lib
+    vendored-vrpn
     osvrCommon)
 
 ###
