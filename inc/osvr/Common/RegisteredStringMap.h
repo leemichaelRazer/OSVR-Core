@@ -27,51 +27,16 @@
 
 // Internal Includes
 #include <osvr/Common/Export.h>
+#include <osvr/Util/ID.h>
 
 // Library/third-party includes
 #include <json/value.h>
 
 // Standard includes
-#include <string>
-#include <stdint.h>
 #include <vector>
 
 namespace osvr {
 namespace common {
-
-    /// idea from the
-    /// http://www.ilikebigbits.com/blog/2014/5/6/type-safe-identifiers-in-c
-    template <class Tag, class impl> class ID {
-      public:
-        static ID invalid() { return ID(); }
-
-        // Default constructor which will set m_val to a 0xffffffff (UINT32 max)
-        // and signify empty.
-        ID() : m_val(0xffffffff) {}
-
-        // Explicit constructor:
-        explicit ID(impl val) : m_val(val) {}
-
-        // Explicit conversion to get back the impl:
-        // explicit operator impl() const { return m_val; }
-
-        // Implicit conversion to get back the impl
-        operator impl() const { return m_val; }
-
-        bool empty() const { return m_val == 0xffffffff ? true : false; }
-
-        // this messes with implicit conversion (type casting)
-        /*
-        friend bool operator>(ID a, impl b) { return a.m_val > b; }
-        friend bool operator<(ID a, impl b) { return a.m_val < b; }
-        friend bool operator==(ID a, ID b) { return a.m_val == b.m_val; }
-        friend bool operator!=(ID a, ID b) { return a.m_val != b.m_val; }
-        */
-        impl m_val;
-    };
-
-    typedef ID<struct StringTag, uint32_t> StringID;
-    typedef ID<struct StringTag, uint32_t> PeerStringID;
 
     /// map<name, id>
     typedef std::map<std::string, StringID> RegistryList;
