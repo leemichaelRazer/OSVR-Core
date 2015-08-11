@@ -34,7 +34,6 @@
 
 // Standard includes
 // - none
-#include <iostream>
 
 OSVR_ReturnCode osvrClientGetInterface(OSVR_ClientContext ctx,
                                        const char path[],
