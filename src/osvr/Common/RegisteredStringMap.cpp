@@ -157,9 +157,9 @@ namespace common {
         // this name may already be stored in correlatedMap
         // so we get the localID first (or register it)
         // then store it in the mappings
-        auto &gestureNames = peerData.getMemberNames();
+        auto &entryNames = peerData.getMemberNames();
 
-        for (auto &name : gestureNames) {
+        for (auto &name : entryNames) {
 
             PeerStringID peerID(peerData[name].asUInt());
             StringID localID = getStringID(name);
