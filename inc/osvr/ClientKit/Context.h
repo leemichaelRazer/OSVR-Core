@@ -109,10 +109,9 @@ namespace clientkit {
     inline OSVR_ClientContext ClientContext::get() { return m_context; }
 
     inline std::string ClientContext::getNamefromID(StringID id) {
-        
+
         size_t length = 0;
-        OSVR_ReturnCode ret = osvrClientGetNameLength(
-            m_context, id, &length);
+        OSVR_ReturnCode ret = osvrClientGetNameLength(m_context, id, &length);
         if (OSVR_RETURN_SUCCESS != ret) {
             throw std::runtime_error(
                 "Invalid context or null reference to length variable.");
@@ -123,15 +122,13 @@ namespace clientkit {
         }
 
         boost::scoped_array<char> buf(new char[length]);
-        ret = osvrClientGetNameFromID(m_context, id, buf.get(),
-            length);
+        ret = osvrClientGetNameFromID(m_context, id, buf.get(), length);
         if (OSVR_RETURN_SUCCESS != ret) {
             throw std::runtime_error("Invalid context, null reference to "
-                "buffer, or buffer is too small.");
+                                     "buffer, or buffer is too small.");
         }
         return std::string(buf.get());
     }
-
 
 } // end namespace clientkit
 
