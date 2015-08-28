@@ -35,6 +35,21 @@ if(BUILD_CLIENT_APPS)
         FOLDER "OSVR Stock Applications")
     install(TARGETS osvr_reset_yaw
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+		
+    add_executable(osvr_reset_yaw_RZ
+        osvr_reset_yaw_RZ.cpp
+        ClientMainloop.h
+        ClientMainloopThread.h)
+    target_link_libraries(osvr_reset_yaw_RZ
+        jsoncpp_lib
+        osvrClientKitCpp
+        osvrClient
+        osvrCommon
+        eigen-headers
+        boost_thread
+        boost_program_options)
+    set_target_properties(osvr_reset_yaw_RZ PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS"
+        FOLDER "OSVR Stock Applications")
 endif()
 
 if(BUILD_SERVER_EXAMPLES)
@@ -96,9 +111,18 @@ if(BUILD_SERVER_APP)
         osvr_server.cpp
         ${OSVR_SERVER_RESOURCE})
     target_link_libraries(osvr_server osvrServer jsoncpp_lib)
-    set_target_properties(osvr_server PROPERTIES
+    set_target_properties(osvr_server PROPERTIES LINK_FLAGS "/SUBSYSTEM:CONSOLE"
         FOLDER "OSVR Stock Applications")
-    install(TARGETS osvr_server
+
+	add_definitions(-DUNICODE)
+	add_definitions(-D_UNICODE)
+     add_executable(osvr_services
+        Service/Service.cpp Service/Service.h Service/ServiceImpl.cpp Service/ServiceImpl.h Service/stdafx.cpp Service/stdafx.h Service/ServiceErrors.h ${OSVR_SERVER_RESOURCE})
+    target_link_libraries(osvr_services osvrServer jsoncpp_lib)
+    set_target_properties(osvr_services PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS"
+        FOLDER "OSVR Stock Applications")
+		
+    install(TARGETS osvr_server osvr_services
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
     set(FILE_OUTPUTS)

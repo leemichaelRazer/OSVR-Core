@@ -56,6 +56,12 @@ using std::cout;
 using std::cerr;
 using std::endl;
 
+// Redirects used for std::cout and std:cerr
+std::streambuf *o_psbuf, *o_backup;
+std::ofstream o_filestr;
+std::streambuf *e_psbuf, *e_backup;
+std::ofstream e_filestr;
+
 inline std::string
 createJSONAlias(std::string const &path,
                 osvr::common::elements::AliasElement const &elt) {
@@ -85,35 +91,82 @@ getAliasElement(osvr::clientkit::ClientContext &ctx, std::string const &path) {
 
 auto SETTLE_TIME = boost::posix_time::seconds(2);
 
+#include <Windows.h>
+#include <intsafe.h>
+
+int reset_yaw_main(void);
+
+// Windows main function
+int WINAPI wWinMain(
+	HINSTANCE hInstance,
+	HINSTANCE hPrevInstance,
+	LPWSTR lpCmdLine,
+	int nCmdShow)
+{
+	HRESULT hr;
+
+	hr = CoInitialize(NULL);
+
+	if (SUCCEEDED(hr))
+	{
+		{
+			reset_yaw_main();
+		}
+		CoUninitialize();
+	}
+
+	return SUCCEEDED(hr) ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+
 /// @brief A flag we set in transform levels we create.
 static const char FLAG_KEY[] = "resetYaw";
 
-int main(int argc, char *argv[]) {
-    namespace po = boost::program_options;
-    // clang-format off
-    po::options_description desc("Options");
-    desc.add_options()
-        ("help", "produce help message")
-        ("path", po::value<std::string>()->default_value("/me/head"), "path to reset-yaw on")
-        ;
-    // clang-format on
+int reset_yaw_main() {
 
-    po::variables_map vm;
-    po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
-    po::notify(vm);
+	o_filestr.open("OSVR/reset_yaw.log");
+	o_backup = std::cout.rdbuf();
+	o_psbuf = o_filestr.rdbuf();
+	std::cout.rdbuf(o_psbuf);
 
-    {
-        /// Deal with command line errors or requests for help
-        bool usage = false;
+	e_filestr.open("OSVR/reset_yaw.log");
+	e_backup = std::cerr.rdbuf();
+	e_psbuf = e_filestr.rdbuf();
+	std::cerr.rdbuf(e_psbuf);
 
-        if (vm.count("help")) {
-            cout << "Usage: osvr_reset_yaw [options]" << endl;
-            cout << desc << "\n";
-            return 1;
-        }
-    }
-    osvr::clientkit::ClientContext ctx("com.osvr.bundled.resetyaw");
-    std::string const path = vm["path"].as<std::string>();
+	//namespace po = boost::program_options;
+ //   // clang-format off
+ //   po::options_description desc("Options");
+ //   desc.add_options()
+ //       ("help", "produce help message")
+ //       ("path", po::value<std::string>()->default_value("/me/head"), "path to reset-yaw on")
+ //       ;
+ //   // clang-format on
+
+ //   po::variables_map vm;
+ //   po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
+ //   po::notify(vm);
+
+ //   {
+ //       /// Deal with command line errors or requests for help
+ //       bool usage = false;
+
+ //       if (vm.count("help")) {
+ //           cout << "Usage: osvr_reset_yaw [options]" << endl;
+ //           cout << desc << "\n";
+	//		std::cout.rdbuf(o_backup);
+	//		o_filestr.close();
+	//		std::cerr.rdbuf(e_backup);
+	//		e_filestr.close();
+
+	//		return 1;
+ //       }
+ //   }
+ //   osvr::clientkit::ClientContext ctx("com.osvr.bundled.resetyaw");
+	//std::string const path = vm["path"].as<std::string>();
+
+	osvr::clientkit::ClientContext ctx("com.osvr.bundled.resetyaw");
+	std::string const path = "/me/head";
 
     // Get the interface associated with the destination route we
     // are looking for.
@@ -130,7 +183,12 @@ int main(int argc, char *argv[]) {
         if (!elt) {
             // No luck, sorry.
             cerr << "Couldn't get the alias at " << path << endl;
-            return -1;
+			std::cout.rdbuf(o_backup);
+			o_filestr.close();
+			std::cerr.rdbuf(e_backup);
+			e_filestr.close();
+
+			return -1;
         }
 
         // Get a reference to the source associated with the portion
@@ -142,13 +200,23 @@ int main(int argc, char *argv[]) {
         osvr::common::ParsedAlias origAlias{elt->getSource()};
         if (!origAlias.isValid()) {
             cerr << "Couldn't parse the alias!" << endl;
-            return -1;
+			std::cout.rdbuf(o_backup);
+			o_filestr.close();
+			std::cerr.rdbuf(e_backup);
+			e_filestr.close();
+
+			return -1;
         }
         cout << "Original transform: "
              << origAlias.getAliasValue().toStyledString() << "\n" << endl;
         osvr::common::GeneralizedTransform xforms{origAlias.getAliasValue()};
         osvr::common::remove_if(xforms, [](Json::Value const &current) {
-            return current.isMember(FLAG_KEY) && current[FLAG_KEY].isBool() &&
+			std::cout.rdbuf(o_backup);
+			o_filestr.close();
+			std::cerr.rdbuf(e_backup);
+			e_filestr.close();
+
+			return current.isMember(FLAG_KEY) && current[FLAG_KEY].isBool() &&
                    current[FLAG_KEY].asBool();
         });
         cout << "Cleaned transform: "
@@ -182,7 +250,12 @@ int main(int argc, char *argv[]) {
                         "path correct?"
                      << endl;
  //               std::cin.ignore();
-                return -1;
+				std::cout.rdbuf(o_backup);
+				o_filestr.close();
+				std::cerr.rdbuf(e_backup);
+				e_filestr.close();
+
+				return -1;
             }
             auto q = osvr::util::fromQuat(state);
 
@@ -211,5 +284,10 @@ int main(int argc, char *argv[]) {
         cout << "Press enter to exit.";
 //        std::cin.ignore();
     }
-    return 0;
+	std::cout.rdbuf(o_backup);
+	o_filestr.close();
+	std::cerr.rdbuf(e_backup);
+	e_filestr.close();
+
+	return 0;
 }
