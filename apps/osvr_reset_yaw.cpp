@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
 
         cout << "\n\nPlease place your device for " << path
              << " in its 'zero' orientation and press enter." << endl;
-  //      std::cin.ignore();
+        std::cin.ignore();
 
         OSVR_OrientationState state;
         OSVR_TimeValue timestamp;
@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
                         "are you sure you have a device plugged in and your "
                         "path correct?"
                      << endl;
- //               std::cin.ignore();
+                std::cin.ignore();
                 return -1;
             }
             auto q = osvr::util::fromQuat(state);
@@ -209,7 +209,7 @@ int main(int argc, char *argv[]) {
         boost::this_thread::sleep(SETTLE_TIME);
 
         cout << "Press enter to exit.";
-//        std::cin.ignore();
+        std::cin.ignore();
     }
     return 0;
 }

@@ -4,12 +4,11 @@
     @date 2015
 
     @author
-    Sensics, Inc.
-    <http://sensics.com/osvr>
+    Razer, LLC.
 
 */
 
-// Copyright 2015 Sensics, Inc.
+// Copyright 2015 Razer, LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,6 +51,9 @@
 #include <fstream>
 #include <exception>
 
+#include <Windows.h>
+#include <intsafe.h>
+
 using std::cout;
 using std::cerr;
 using std::endl;
@@ -91,10 +93,8 @@ getAliasElement(osvr::clientkit::ClientContext &ctx, std::string const &path) {
 
 auto SETTLE_TIME = boost::posix_time::seconds(2);
 
-#include <Windows.h>
-#include <intsafe.h>
-
 int reset_yaw_main(void);
+int resetStd(void);
 
 // Windows main function
 int WINAPI wWinMain(
@@ -104,32 +104,32 @@ int WINAPI wWinMain(
 	int nCmdShow)
 {
 	HRESULT hr;
+	int returnCode;
 
 	hr = CoInitialize(NULL);
 
 	if (SUCCEEDED(hr))
 	{
 		{
-			reset_yaw_main();
+			returnCode = reset_yaw_main();
 		}
 		CoUninitialize();
 	}
-
-	return SUCCEEDED(hr) ? EXIT_SUCCESS : EXIT_FAILURE;
+	return returnCode;
+	//return SUCCEEDED(hr) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-
 
 /// @brief A flag we set in transform levels we create.
 static const char FLAG_KEY[] = "resetYaw";
 
 int reset_yaw_main() {
 
-	o_filestr.open("OSVR/reset_yaw.log");
+	o_filestr.open("reset_yaw.log");
 	o_backup = std::cout.rdbuf();
 	o_psbuf = o_filestr.rdbuf();
 	std::cout.rdbuf(o_psbuf);
 
-	e_filestr.open("OSVR/reset_yaw.log");
+	e_filestr.open("error_reset_yaw.log");
 	e_backup = std::cerr.rdbuf();
 	e_psbuf = e_filestr.rdbuf();
 	std::cerr.rdbuf(e_psbuf);
@@ -165,7 +165,7 @@ int reset_yaw_main() {
  //   osvr::clientkit::ClientContext ctx("com.osvr.bundled.resetyaw");
 	//std::string const path = vm["path"].as<std::string>();
 
-	osvr::clientkit::ClientContext ctx("com.osvr.bundled.resetyaw");
+	osvr::clientkit::ClientContext ctx("com.osvr.bundled.resetyawRZ");
 	std::string const path = "/me/head";
 
     // Get the interface associated with the destination route we
@@ -183,10 +183,7 @@ int reset_yaw_main() {
         if (!elt) {
             // No luck, sorry.
             cerr << "Couldn't get the alias at " << path << endl;
-			std::cout.rdbuf(o_backup);
-			o_filestr.close();
-			std::cerr.rdbuf(e_backup);
-			e_filestr.close();
+			resetStd();
 
 			return -1;
         }
@@ -200,22 +197,15 @@ int reset_yaw_main() {
         osvr::common::ParsedAlias origAlias{elt->getSource()};
         if (!origAlias.isValid()) {
             cerr << "Couldn't parse the alias!" << endl;
-			std::cout.rdbuf(o_backup);
-			o_filestr.close();
-			std::cerr.rdbuf(e_backup);
-			e_filestr.close();
+			resetStd();
 
-			return -1;
+			return -2;
         }
         cout << "Original transform: "
              << origAlias.getAliasValue().toStyledString() << "\n" << endl;
         osvr::common::GeneralizedTransform xforms{origAlias.getAliasValue()};
         osvr::common::remove_if(xforms, [](Json::Value const &current) {
-			std::cout.rdbuf(o_backup);
-			o_filestr.close();
-			std::cerr.rdbuf(e_backup);
-			e_filestr.close();
-
+			resetStd();
 			return current.isMember(FLAG_KEY) && current[FLAG_KEY].isBool() &&
                    current[FLAG_KEY].asBool();
         });
@@ -234,8 +224,7 @@ int reset_yaw_main() {
 
         cout << "\n\nPlease place your device for " << path
              << " in its 'zero' orientation and press enter." << endl;
-  //      std::cin.ignore();
-
+ 
         OSVR_OrientationState state;
         OSVR_TimeValue timestamp;
         OSVR_ReturnCode ret;
@@ -249,13 +238,8 @@ int reset_yaw_main() {
                         "are you sure you have a device plugged in and your "
                         "path correct?"
                      << endl;
- //               std::cin.ignore();
-				std::cout.rdbuf(o_backup);
-				o_filestr.close();
-				std::cerr.rdbuf(e_backup);
-				e_filestr.close();
-
-				return -1;
+				resetStd();
+				return -3;
             }
             auto q = osvr::util::fromQuat(state);
 
@@ -280,14 +264,15 @@ int reset_yaw_main() {
         }
 
         boost::this_thread::sleep(SETTLE_TIME);
-
-        cout << "Press enter to exit.";
-//        std::cin.ignore();
     }
+	resetStd();
+	return 0;
+}
+
+int resetStd(){
 	std::cout.rdbuf(o_backup);
 	o_filestr.close();
 	std::cerr.rdbuf(e_backup);
 	e_filestr.close();
-
 	return 0;
 }
