@@ -166,8 +166,10 @@ class VRPNHardwareDetect : boost::noncopyable {
                 }
 
                 // OSVR Hacker Dev Kit
+				// ML: Added in the x1532 x0B00
                 if ((dev->vendor_id == 0x1532 && dev->product_id == 0x0300) ||
-                    (dev->vendor_id == 0x03EB && dev->product_id == 0x2421)) {
+					(dev->vendor_id == 0x1532 && dev->product_id == 0x0B00) || 
+					(dev->vendor_id == 0x03EB && dev->product_id == 0x2421)) {
                     gotDevice = true;
                     m_handlePath(dev->path);
                     osvr::vrpnserver::VRPNDeviceRegistration reg(ctx);
