@@ -19,7 +19,19 @@ if(BUILD_CLIENT_APPS)
     install(TARGETS osvr_print_tree
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
-    add_executable(osvr_reset_yaw
+    add_executable(osvr_print_treeRZ
+        osvr_print_treeRZ.cpp)
+    target_link_libraries(osvr_print_treeRZ
+        osvrClientKitCpp
+        osvrCommon
+        jsoncpp_lib
+        boost_program_options)
+    set_target_properties(osvr_print_treeRZ PROPERTIES
+        FOLDER "OSVR Stock Applications")
+    install(TARGETS osvr_print_treeRZ
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+
+		add_executable(osvr_reset_yaw
         osvr_reset_yaw.cpp
         ClientMainloop.h
         ClientMainloopThread.h)

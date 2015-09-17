@@ -94,7 +94,8 @@ namespace client {
     };
 
     static const std::chrono::milliseconds STARTUP_CONNECT_TIMEOUT(200);
-    static const std::chrono::milliseconds STARTUP_TREE_TIMEOUT(1000);
+	//static const std::chrono::milliseconds STARTUP_TREE_TIMEOUT(1000);
+	static const std::chrono::milliseconds STARTUP_TREE_TIMEOUT(5000);
     static const std::chrono::milliseconds STARTUP_LOOP_SLEEP(1);
 
     PureClientContext::PureClientContext(const char appId[], const char host[],
