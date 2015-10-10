@@ -178,12 +178,12 @@ int WINAPI wWinMain(
 }
 
 int print_tree_main(void) {
-	o_filestr.open("osvr_print_treeRZ.log");
+	o_filestr.open("/ProgramData/OSVR/osvr_print_treeRZ.log");
 	o_backup = std::cout.rdbuf();
 	o_psbuf = o_filestr.rdbuf();
 	std::cout.rdbuf(o_psbuf);
 
-	e_filestr.open("osvr_print_treeRZ.log");
+	e_filestr.open("/ProgramData/OSVR/osvr_print_treeRZ.log");
 	e_backup = std::cerr.rdbuf();
 	e_psbuf = e_filestr.rdbuf();
 	std::cerr.rdbuf(e_psbuf);
