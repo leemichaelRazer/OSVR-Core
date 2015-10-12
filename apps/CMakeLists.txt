@@ -26,7 +26,7 @@ if(BUILD_CLIENT_APPS)
         osvrCommon
         jsoncpp_lib
         boost_program_options)
-    set_target_properties(osvr_print_treeRZ PROPERTIES
+    set_target_properties(osvr_print_treeRZ PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS"
         FOLDER "OSVR Stock Applications")
     install(TARGETS osvr_print_treeRZ
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
