@@ -100,6 +100,18 @@ namespace clientkit {
         OSVR_ViewportDimension height;
     };
 
+    struct ProjectionClippingPlanes {
+        double left;
+        double right;
+        double top;
+        double bottom;
+    };
+
+    struct DisplayDimensions {
+        OSVR_DisplayDimension width;
+        OSVR_DisplayDimension height;
+    };
+
     /// @brief Wrapper for a viewer, eye, and surface bound to a display config.
     /// DOES NOT provide lifetime management for the associated display config!
     class Surface {
@@ -153,6 +165,22 @@ namespace clientkit {
                 handleDisplayError(
                     "Could not access projection matrix for surface!");
             }
+        }
+
+        /// @brief Gets the clipping planes.
+        ///
+        /// @sa osvrClientGetViewerEyeSurfaceProjectionClippingPlanes
+        ProjectionClippingPlanes getProjectionClippingPlanes() const {
+            ProjectionClippingPlanes clippingPlanes;
+            OSVR_ReturnCode ret =
+                osvrClientGetViewerEyeSurfaceProjectionClippingPlanes(
+                    m_disp, m_viewer, m_eye, m_surface, &clippingPlanes.left,
+                    &clippingPlanes.right, &clippingPlanes.bottom, &clippingPlanes.top);
+            if (OSVR_RETURN_SUCCESS != ret) {
+                handleDisplayError(
+                    "Could not access projection clipping planes for surface!");
+            }
+            return clippingPlanes;
         }
 
         /// @brief Determines if the description of the surface requests any
@@ -430,6 +458,33 @@ namespace clientkit {
         bool checkStartup() const {
             ensureValid();
             return osvrClientCheckDisplayStartup(m_disp) == OSVR_RETURN_SUCCESS;
+        }
+
+        /// @brief Returns number of inputs for this display.
+        ///
+        /// @sa osvrClientGetNumDisplayInputs()
+        OSVR_DisplayInputCount getNumDisplayInputs() const {
+            ensureValid();
+            OSVR_DisplayInputCount inputs;
+            OSVR_ReturnCode ret = osvrClientGetNumDisplayInputs(m_disp, &inputs);
+            if (ret != OSVR_RETURN_SUCCESS) {
+                handleDisplayError("Couldn't get number of display inputs!");
+            }
+            return inputs;
+        }
+
+        /// @brief Returns display dimensions for a display input.
+        ///
+        /// @sa osvrClientGetDisplayDimensions()
+        osvr::clientkit::DisplayDimensions getDisplayDimensions(OSVR_DisplayInputCount displayInputIndex) const {
+            ensureValid();
+            DisplayDimensions dimensions;
+            OSVR_ReturnCode ret = osvrClientGetDisplayDimensions(m_disp, displayInputIndex, &dimensions.width, &dimensions.height);
+            if (ret != OSVR_RETURN_SUCCESS) {
+                handleDisplayError("Couldn't get dimensions of this "
+                                   "display!");
+            }
+            return dimensions;
         }
 
         /// @name Child-related methods

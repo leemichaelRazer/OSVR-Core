@@ -37,6 +37,8 @@
 #include <opencv2/core/operations.hpp>
 #include <opencv2/highgui/highgui.hpp> // for image capture
 #include <opencv2/imgproc/imgproc.hpp> // for image scaling
+#include <json/value.h>
+#include <json/reader.h>
 
 #include <boost/noncopyable.hpp>
 
@@ -46,9 +48,6 @@
 #include <sstream>
 #include <memory>
 
-// This string begins the DevicePath provided by Windows for the HDK's camera.
-static const auto HDK_CAMERA_PATH_PREFIX = "\\\\?\\usb#vid_0bda&pid_57e8&mi_00";
-
 // Define the constant below to use a DirectShow-based workaround to not
 // being able to open the OSVR HDK camera using OpenCV.
 /// @todo Remove this code and the DirectShow stuff once the camera can be read
@@ -56,14 +55,12 @@ static const auto HDK_CAMERA_PATH_PREFIX = "\\\\?\\usb#vid_0bda&pid_57e8&mi_00";
 #define VBHMD_USE_DIRECTSHOW
 #ifdef VBHMD_USE_DIRECTSHOW
 #include "directx_camera_server.h"
+#include "DirectShowHDKCameraFactory.h"
+#include "DirectShowToCV.h"
 using CameraPtr = std::unique_ptr<directx_camera_server>;
 #else
 using CameraPtr = std::unique_ptr<cv::VideoCapture>;
 #endif
-
-// Define the constant below to provide debugging (window showing video and
-// behavior, printing tracked positions)
-// -> now located in VideoBasedTracker.h
 
 // Define the constant below to print timing information (how many updates
 // per second we are getting).
@@ -88,9 +85,12 @@ namespace {
 class VideoBasedHMDTracker : boost::noncopyable {
   public:
     VideoBasedHMDTracker(OSVR_PluginRegContext ctx, CameraPtr &&camera,
-                         int devNumber = 0)
+      int devNumber = 0, bool showDebug = false)
 #ifndef VBHMD_FAKE_IMAGES
         : m_camera(std::move(camera))
+        , m_vbtracker(showDebug)
+#else
+        : m_vbtracker(showDebug)
 #endif
     {
         // Set the number of threads for OpenCV to use.
@@ -134,10 +134,8 @@ class VideoBasedHMDTracker : boost::noncopyable {
             fileName << std::setfill('0') << std::setw(4) << imageNum++;
             fileName << ".tif";
             cv::Mat image;
-#ifdef VBHMD_DEBUG
             std::cout << "Trying to read image from " << fileName.str()
                       << std::endl;
-#endif
             image = cv::imread(fileName.str().c_str(), CV_LOAD_IMAGE_COLOR);
             if (!image.data) {
                 break;
@@ -191,12 +189,12 @@ class VideoBasedHMDTracker : boost::noncopyable {
         //        m_identifiers.push_back(new
         //        osvr::vbtracker::OsvrHdkLedIdentifier(osvr::vbtracker::OsvrHdkLedIdentifier_RANDOM_IMAGES_PATTERNS));
 
-        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifier(0), m, d,
+        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifierSimulated(0), m, d,
                               osvr::vbtracker::OsvrHdkLedLocations_SENSOR0, 4,
                               2);
         // There are sometimes only four beacons on the back unit (two of
         // the LEDs are disabled), so we let things work with just those.
-        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifier(1), m, d,
+        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifierSimulated(1), m, d,
                               osvr::vbtracker::OsvrHdkLedLocations_SENSOR1, 4,
                               0);
 
@@ -231,10 +229,6 @@ class VideoBasedHMDTracker : boost::noncopyable {
                 /// HDK camera
                 m_type = OSVRHDK;
             }
-#ifdef VBHMD_DEBUG
-            std::cout << "Got image from camera of size " << width << "x"
-                      << height << std::endl;
-#endif
             if (m_type == OculusDK2) {
                 std::cout << "Is Oculus camera, reformatting to mono"
                           << std::endl;
@@ -344,7 +338,7 @@ class VideoBasedHMDTracker : boost::noncopyable {
 
 // Sleep 1/120th of a second, to simulate a reasonable
 // frame rate.
-//        vrpn_SleepMsecs(1000 / 120);
+        vrpn_SleepMsecs(1000 / 120);
 #else
         if (!m_camera->isOpened()) {
             // Couldn't open the camera.  Failing silently for now. Maybe the
@@ -361,17 +355,8 @@ class VideoBasedHMDTracker : boost::noncopyable {
             // camera will be plugged back in later.
             return OSVR_RETURN_SUCCESS;
         }
-        int minx, miny, maxx, maxy;
-        m_camera->read_range(minx, maxx, miny, maxy);
-        int height = maxy - miny + 1;
-        int width = maxx - minx + 1;
-        m_frame = cv::Mat(height, width, CV_8UC3,
-                          (BYTE *)(m_camera->get_pixel_buffer_pointer()));
+        m_frame = retrieve(*m_camera);
 
-        //==================================================================
-        // Flip the image in Y to take it from DirectShow space into
-        // OpenCV space.
-        cv::flip(m_frame, m_frame, 0);
 #else
         if (!m_camera->grab()) {
             // No frame available.
@@ -484,7 +469,12 @@ class VideoBasedHMDTracker : boost::noncopyable {
 
 class HardwareDetection {
   public:
-    HardwareDetection() : m_found(false) {}
+    HardwareDetection(int cameraID = 0, bool showDebug = false)
+      : m_found(false)
+    {
+      m_cameraID = cameraID;
+      m_showDebug = showDebug;
+    }
 
     OSVR_ReturnCode operator()(OSVR_PluginRegContext ctx) {
         if (m_found) {
@@ -496,13 +486,13 @@ class HardwareDetection {
         // Open a DirectShow camera and make sure we can read an
         // image from it. We now filter by path prefix to make sure it only
         // finds HDK cameras, not whatever random webcam comes up first.
-        cam.reset(new directx_camera_server(HDK_CAMERA_PATH_PREFIX));
-        if (!cam->read_image_to_memory()) {
+        cam = getDirectShowHDKCamera();
+        if (!cam || !cam->read_image_to_memory()) {
             return OSVR_RETURN_FAILURE;
         }
 #else
         // Autodetect camera.
-        cam.reset(new cv::VideoCapture(0));
+        cam.reset(new cv::VideoCapture(m_cameraID));
         if (!cap->isOpened()) {
             // Failed to find camera
             return OSVR_RETURN_FAILURE;
@@ -512,8 +502,10 @@ class HardwareDetection {
         m_found = true;
 
         /// Create our device object, passing the context and moving the camera.
+        std::cout << "Opening camera " << m_cameraID << std::endl;
         osvr::pluginkit::registerObjectForDeletion(
-            ctx, new VideoBasedHMDTracker(ctx, std::move(cam)));
+            ctx, new VideoBasedHMDTracker(ctx, std::move(cam),
+            m_cameraID, m_showDebug));
 
         return OSVR_RETURN_SUCCESS;
     }
@@ -522,14 +514,49 @@ class HardwareDetection {
     /// @brief Have we found our device yet? (this limits the plugin to one
     /// instance, so that only one tracker will use this camera.)
     bool m_found;
+
+    int m_cameraID; //< Which OpenCV camera should we open?
+    bool m_showDebug; //< Show windows with video to help debug?
 };
+
+class ConfiguredDeviceConstructor {
+public:
+  /// @brief This is the required signature for a device instantiation
+  /// callback.
+  OSVR_ReturnCode operator()(OSVR_PluginRegContext ctx, const char *params) {
+    // Read the JSON data from parameters.
+    Json::Value root;
+    if (params) {
+      Json::Reader r;
+      if (!r.parse(params, root)) {
+        std::cerr << "Could not parse parameters!" << std::endl;
+      }
+    }
+
+    // Read these parameters from a "params" field in the device Json
+    // configuration file.
+
+    // Using `get` here instead of `[]` lets us provide a default value.
+    int cameraID = root.get("cameraID", 0).asInt();
+    bool showDebug = root.get("showDebug", false).asBool();
+
+    // OK, now that we have our parameters, create the device.
+    osvr::pluginkit::PluginContext context(ctx);
+    context.registerHardwareDetectCallback(
+      new HardwareDetection(cameraID, showDebug));
+
+    return OSVR_RETURN_SUCCESS;
+  }
+};
+
 } // namespace
 
 OSVR_PLUGIN(com_osvr_VideoBasedHMDTracker) {
     osvr::pluginkit::PluginContext context(ctx);
 
-    /// Register a detection callback function object.
-    context.registerHardwareDetectCallback(new HardwareDetection());
+    /// Tell the core we're available to create a device object.
+    osvr::pluginkit::registerDriverInstantiationCallback(
+      ctx, "VideoBasedHMDTracker", new ConfiguredDeviceConstructor);
 
     return OSVR_RETURN_SUCCESS;
 }
