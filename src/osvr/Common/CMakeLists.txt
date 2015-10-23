@@ -68,6 +68,7 @@ set(API
     "${HEADER_LOCATION}/JSONSerializationTags.h"
     "${HEADER_LOCATION}/JSONTransformVisitor.h"
     "${HEADER_LOCATION}/Location2DComponent.h"
+    "${HEADER_LOCATION}/LocomotionComponent.h"
     "${HEADER_LOCATION}/MessageHandler.h"
     "${HEADER_LOCATION}/MessageRegistration.h"
     "${HEADER_LOCATION}/NetworkClassOfService.h"
@@ -82,11 +83,15 @@ set(API
     "${HEADER_LOCATION}/PathNode_fwd.h"
     "${HEADER_LOCATION}/PathTree.h"
     "${HEADER_LOCATION}/PathTreeFull.h"
+    "${HEADER_LOCATION}/PathTreeObserver.h"
+    "${HEADER_LOCATION}/PathTreeObserverPtr.h"
+    "${HEADER_LOCATION}/PathTreeOwner.h"
     "${HEADER_LOCATION}/PathTreeSerialization.h"
     "${HEADER_LOCATION}/PathTree_fwd.h"
     "${HEADER_LOCATION}/ProcessDeviceDescriptor.h"
     "${HEADER_LOCATION}/RawMessageType.h"
     "${HEADER_LOCATION}/RawSenderType.h"
+    "${HEADER_LOCATION}/RegisteredStringMap.h"
     "${HEADER_LOCATION}/ReportFromCallback.h"
     "${HEADER_LOCATION}/ReportMap.h"
     "${HEADER_LOCATION}/ReportState.h"
@@ -134,6 +139,7 @@ set(SOURCE
     IPCRingBufferSharedObjects.h
     JSONTransformVisitor.cpp
     Location2DComponent.cpp
+    LocomotionComponent.cpp
     MessageHandler.cpp
     MessageRegistration.cpp
     NetworkClassOfService.cpp
@@ -148,10 +154,13 @@ set(SOURCE
     PathNode.cpp
     PathParseAndRetrieve.h
     PathTree.cpp
+    PathTreeObserver.cpp
+    PathTreeOwner.cpp
     PathTreeSerialization.cpp
     ProcessDeviceDescriptor.cpp
     RawMessageType.cpp
     RawSenderType.cpp
+    RegisteredStringMap.cpp
     ResolveFullTree.cpp
     ResolveTreeNode.cpp
     RouteContainer.cpp

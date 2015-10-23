@@ -40,12 +40,12 @@ using ::osvr::common::ClientContextDeleter;
 using ::osvr::make_shared;
 
 namespace osvr {
-    namespace common {
-        void deleteContext(ClientContext *ctx) {
-            auto del = ctx->getDeleter();
-            (*del)(ctx);
-        }
-    } // namespace common
+namespace common {
+    void deleteContext(ClientContext *ctx) {
+        auto del = ctx->getDeleter();
+        (*del)(ctx);
+    }
+} // namespace common
 } // namespace osvr
 OSVR_ClientContextObject::OSVR_ClientContextObject(const char appId[],
                                                    ClientContextDeleter del)
@@ -90,15 +90,14 @@ OSVR_ClientContextObject::releaseInterface(ClientInterface *iface) {
     if (!iface) {
         return ret;
     }
-    InterfaceList::iterator it =
-        std::find_if(begin(m_interfaces), end(m_interfaces),
-                     [&](ClientInterfacePtr const &ptr) {
-                         if (ptr.get() == iface) {
-                             ret = ptr;
-                             return true;
-                         }
-                         return false;
-                     });
+    auto it = std::find_if(begin(m_interfaces), end(m_interfaces),
+                           [&](ClientInterfacePtr const &ptr) {
+                               if (ptr.get() == iface) {
+                                   ret = ptr;
+                                   return true;
+                               }
+                               return false;
+                           });
     BOOST_ASSERT_MSG(
         (it == end(m_interfaces)) == (!ret),
         "We should have a pointer if and only if we have the iterator");
@@ -131,7 +130,11 @@ bool OSVR_ClientContextObject::releaseObject(void *obj) {
 ClientContextDeleter OSVR_ClientContextObject::getDeleter() const {
     return m_deleter;
 }
-
+bool OSVR_ClientContextObject::getStatus() const { return m_getStatus(); }
+bool OSVR_ClientContextObject::m_getStatus() const {
+    // by default, assume we are started up.
+    return true;
+}
 void OSVR_ClientContextObject::m_handleNewInterface(
     ::osvr::common::ClientInterfacePtr const &) {
     // by default do nothing

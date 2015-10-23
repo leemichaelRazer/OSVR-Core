@@ -23,10 +23,26 @@
 // limitations under the License.
 
 // Internal Includes
-#include <osvr/Client/ClientObjectsAndCallbacks.h>
+#include <osvr/Client/DisplayInput.h>
 
 // Library/third-party includes
 // - none
 
 // Standard includes
 // - none
+
+namespace osvr {
+namespace client {
+    DisplayInput::DisplayInput(OSVR_DisplayDimension width,
+                               OSVR_DisplayDimension height)
+        : m_width(width), m_height(height) {}
+
+    OSVR_DisplayDimension DisplayInput::getDisplayWidth() const {
+        return m_width;
+    }
+
+    OSVR_DisplayDimension DisplayInput::getDisplayHeight() const {
+        return m_height;
+    }
+} // namespace client
+} // namespace osvr

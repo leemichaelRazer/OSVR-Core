@@ -71,6 +71,7 @@ namespace client {
         default:
             throw std::logic_error("Unrecognized enum value for display mode");
         }
+
         return viewport;
     }
 
@@ -87,9 +88,11 @@ namespace client {
             auto const descriptorString = ctx->getStringParameter("/display");
 
             auto desc = display_schema_1::DisplayDescriptor(descriptorString);
-            cfg->container().emplace_back(Viewer(ctx, HEAD_PATH));
-            auto &viewer = cfg->container().front();
+            cfg->m_viewers.container().emplace_back(Viewer(ctx, HEAD_PATH));
+            auto &viewer = cfg->m_viewers.container().front();
             auto eyesDesc = desc.getEyes();
+
+            /// Set up stereo vs mono
             std::vector<uint8_t> eyeIndices;
             Eigen::Vector3d offset;
             if (eyesDesc.size() == 2) {
@@ -103,6 +106,7 @@ namespace client {
                 eyeIndices = {0};
             }
 
+            /// Handle radial distortion parameters
             boost::optional<OSVR_RadialDistortionParameters> distort;
             auto k1 = desc.getDistortion();
             if (k1.k1_red != 0 || k1.k1_green != 0 || k1.k1_blue != 0) {
@@ -112,24 +116,80 @@ namespace client {
                 params.k1.data[2] = k1.k1_blue;
                 distort = params;
             }
+
+            /// Compute angular offset about Y of the optical (view) axis
+            util::Angle axisOffset = 0. * util::radians;
+            {
+                auto overlapPct = desc.getOverlapPercent();
+
+                if (overlapPct < 1.) {
+                    const auto hfov = desc.getHorizontalFOV();
+                    const auto angularOverlap = hfov * overlapPct;
+                    axisOffset = (hfov - angularOverlap) / 2.;
+                }
+            }
+
+            /// Infer the number of display inputs and their association with
+            /// eyes (actually surfaces) based on the descriptor.
+            std::vector<OSVR_DisplayInputCount> displayInputIndices;
+            if (eyesDesc.size() == 2 &&
+                display_schema_1::DisplayDescriptor::FULL_SCREEN ==
+                    desc.getDisplayMode()) {
+                // two eyes, full screen - that means two screens.
+
+                displayInputIndices = {0, 1};
+
+                cfg->m_displayInputs.push_back(DisplayInput(
+                    desc.getDisplayWidth(), desc.getDisplayHeight()));
+                cfg->m_displayInputs.push_back(DisplayInput(
+                    desc.getDisplayWidth(), desc.getDisplayHeight()));
+            } else {
+                // everything else, assume 1 screen.
+                // Note that it's OK that displayInputIndices.size() >=
+                // eyesDesc.size(), we'll just not end up using the second
+                // entry.
+                displayInputIndices = {0, 0};
+
+                cfg->m_displayInputs.push_back(DisplayInput(
+                    desc.getDisplayWidth(), desc.getDisplayHeight()));
+            }
+            BOOST_ASSERT_MSG(displayInputIndices.size() >= eyesDesc.size(),
+                             "Must have at least as many indices as eyes");
+
+            /// Create the actual eye (with implied surface) objects
             for (auto eye : eyeIndices) {
-                double offsetFactor =
-                    (2. * eye) -
-                    1; // turns 0 into -1 and 1 into 1. Doesn't affect
-                       // mono, which has a zero offset vector.
+                // This little computation turns 0 into -1 and 1 into 1, used as
+                // a coefficient to make the two eyes do opposite things.
+                // Doesn't affect mono, which has a zero offset vector.
+                double offsetFactor = (2. * eye) - 1.;
+
+                // Set up per-eye distortion parameters, if needed
                 boost::optional<OSVR_RadialDistortionParameters> distortEye(
                     distort);
-                if (distortEye.is_initialized()) {
+                if (distortEye) {
                     distortEye->centerOfProjection.data[0] =
                         eyesDesc[eye].m_CenterProjX;
                     distortEye->centerOfProjection.data[1] =
                         eyesDesc[eye].m_CenterProjY;
                 }
-                viewer.container().emplace_back(
-                    ViewerEye(ctx, (offsetFactor * offset).eval(), HEAD_PATH,
-                              computeViewport(eye, desc), computeRect(desc),
-                              eyesDesc[eye].m_rotate180,
-                              desc.getPitchTilt().value(), distortEye));
+
+                // precompute translation offset for this eye
+                auto xlateOffset = (offsetFactor * offset).eval();
+
+                // precompute the optical axis rotation for this eye
+                // here, the left eye should get a positive offset since it's a
+                // positive rotation about y, hence the -1 factor.
+                auto eyeAxisOffset = axisOffset * -1. * offsetFactor;
+
+                // Look up the display index for this eye.
+                auto displayInputIdx = displayInputIndices[eye];
+
+                /// Create the ViewerEye[Surface] and add it to the container.
+                viewer.container().emplace_back(ViewerEye(
+                    ctx, xlateOffset, HEAD_PATH, computeViewport(eye, desc),
+                    computeRect(desc), eyesDesc[eye].m_rotate180,
+                    desc.getPitchTilt().value(), distortEye, displayInputIdx,
+                    eyeAxisOffset));
             }
 
             OSVR_DEV_VERBOSE("Display: " << desc.getHumanReadableDescription());
@@ -148,11 +208,11 @@ namespace client {
     DisplayConfig::DisplayConfig() {}
 
     bool DisplayConfig::isStartupComplete() const {
-        for (auto const &viewer : *this) {
+        for (auto const &viewer : m_viewers) {
             if (!viewer.hasPose()) {
                 return false;
             }
-            for (auto const& eye : viewer) {
+            for (auto const &eye : viewer) {
                 if (!eye.hasPose()) {
                     return false;
                 }
@@ -160,5 +220,6 @@ namespace client {
         }
         return true;
     }
+
 } // namespace client
 } // namespace osvr

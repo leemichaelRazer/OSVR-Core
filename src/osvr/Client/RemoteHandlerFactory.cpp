@@ -23,13 +23,14 @@
 // limitations under the License.
 
 // Internal Includes
-#include "RemoteHandlerFactory.h"
+#include <osvr/Client/RemoteHandlerFactory.h>
 #include "AnalogRemoteFactory.h"
 #include "ButtonRemoteFactory.h"
 #include "DirectionRemoteFactory.h"
 #include "EyeTrackerRemoteFactory.h"
 #include "ImagingRemoteFactory.h"
 #include "Location2DRemoteFactory.h"
+#include "LocomotionRemoteFactory.h"
 #include "TrackerRemoteFactory.h"
 
 // Library/third-party includes
@@ -49,6 +50,7 @@ namespace client {
         ImagingRemoteFactory(conns).registerWith(factory);
         EyeTrackerRemoteFactory(conns).registerWith(factory);
         Location2DRemoteFactory(conns).registerWith(factory);
+        LocomotionRemoteFactory(conns).registerWith(factory);
         DirectionRemoteFactory(conns).registerWith(factory);
     }
 

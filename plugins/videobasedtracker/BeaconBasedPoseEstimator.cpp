@@ -37,58 +37,58 @@ namespace vbtracker {
     // clang-format off
     // Default 3D locations for the beacons on an OSVR HDK face plate, in
     // millimeters
-    const DoubleVecVec OsvrHdkLedLocations_SENSOR0 = {
-        {-85, 3, 24.09},
-        { -83.2, -14.01, 13.89 },
-        { -47, 51, 24.09 },
-        { 47, 51, 24.09 },
-        { 86.6, 2.65, 24.09 },
-        { 85.5, -14.31, 13.89 },
-        { 85.2, 19.68, 13.89 },
-        { 21, 51, 24.09 },  // Original spec was 13.09, new position works better
-        { -21, 51, 24.09 }, // Original spec was 13.09, new position works better
-        { -84.2, 19.99, 13.89 },
-        { -60.41, 47.55, 44.6 },
-        { -80.42, 20.48, 42.9 },
-        { -82.01, 2.74, 42.4 },
-        { -80.42, -14.99, 42.9 },
-        { -60.41, -10.25, 48.1 },
-        { -60.41, 15.75, 48.1 },
-        { -30.41, 32.75, 50.5 },
-        { -31.41, 47.34, 47 },
-        { -0.41, -15.25, 51.3 },
-        { -30.41, -27.25, 50.5 },
-        { -60.44, -41.65, 45.1 },
-        { -22.41, -41.65, 47.8 },
-        { 21.59, -41.65, 47.8 },
-        { 59.59, -41.65, 45.1 },
-        { 79.63, -14.98, 42.9 },
-        { 29.59, -27.25, 50.5 },
-        { 81.19, 2.74, 42.4 },
-        { 79.61, 20.48, 42.9 },
-        { 59.59, 47.55, 44.6 },
-        { 30.59, 47.55, 47 },
-        { 29.59, 32.75, 50.5 },
-        { -0.41, 20.75, 51.3 },
-        { 59.59, 15.75, 48.1 },
-        { 59.59, -10.25, 48.1 }
+    const Point3Vector OsvrHdkLedLocations_SENSOR0 = {
+        cv::Point3f( -85, 3, 24.09 ),
+        cv::Point3f( -83.2, -14.01, 13.89 ),
+        cv::Point3f( -47, 51, 24.09 ),
+        cv::Point3f( 47, 51, 24.09 ),
+        cv::Point3f( 86.6, 2.65, 24.09 ),
+        cv::Point3f( 85.5, -14.31, 13.89 ),
+        cv::Point3f( 85.2, 19.68, 13.89 ),
+        cv::Point3f( 21, 51, 24.09 ),  // Original spec was 13.09, new position works better
+        cv::Point3f( -21, 51, 24.09 ), // Original spec was 13.09, new position works better
+        cv::Point3f( -84.2, 19.99, 13.89 ),
+        cv::Point3f( -60.41, 47.55, 44.6 ),
+        cv::Point3f( -80.42, 20.48, 42.9 ),
+        cv::Point3f( -82.01, 2.74, 42.4 ),
+        cv::Point3f( -80.42, -14.99, 42.9 ),
+        cv::Point3f( -60.41, -10.25, 48.1 ),
+        cv::Point3f( -60.41, 15.75, 48.1 ),
+        cv::Point3f( -30.41, 32.75, 50.5 ),
+        cv::Point3f( -31.41, 47.34, 47 ),
+        cv::Point3f( -0.41, -15.25, 51.3 ),
+        cv::Point3f( -30.41, -27.25, 50.5 ),
+        cv::Point3f( -60.44, -41.65, 45.1 ),
+        cv::Point3f( -22.41, -41.65, 47.8 ),
+        cv::Point3f( 21.59, -41.65, 47.8 ),
+        cv::Point3f( 59.59, -41.65, 45.1 ),
+        cv::Point3f( 79.63, -14.98, 42.9 ),
+        cv::Point3f( 29.59, -27.25, 50.5 ),
+        cv::Point3f( 81.19, 2.74, 42.4 ),
+        cv::Point3f( 79.61, 20.48, 42.9 ),
+        cv::Point3f( 59.59, 47.55, 44.6 ),
+        cv::Point3f( 30.59, 47.55, 47 ),
+        cv::Point3f( 29.59, 32.75, 50.5 ),
+        cv::Point3f( -0.41, 20.75, 51.3 ),
+        cv::Point3f( 59.59, 15.75, 48.1 ),
+        cv::Point3f( 59.59, -10.25, 48.1 )
     };
 
     // Default 3D locations for the beacons on an OSVR HDK back plate, in
     // millimeters
-    const DoubleVecVec OsvrHdkLedLocations_SENSOR1 = {
-        {1, 23.8, 0},
-        { 11, 5.8, 0 },
-        { 9, -23.8, 0 },
-        { 0, -8.8, 0 },
-        { -9, -23.8, 0 },
-        { -12, 5.8, 0 }
+    const Point3Vector OsvrHdkLedLocations_SENSOR1 = {
+        cv::Point3f( 1, 23.8, 0 ),
+        cv::Point3f( 11, 5.8, 0 ),
+        cv::Point3f( 9, -23.8, 0 ),
+        cv::Point3f( 0, -8.8, 0 ),
+        cv::Point3f( -9, -23.8, 0 ),
+        cv::Point3f( -12, 5.8, 0 )
     };
     // clang-format on
 
     BeaconBasedPoseEstimator::BeaconBasedPoseEstimator(
         const DoubleVecVec &cameraMatrix, const std::vector<double> &distCoeffs,
-        const DoubleVecVec &beacons, size_t requiredInliers,
+        const Point3Vector &beacons, size_t requiredInliers,
         size_t permittedOutliers) {
         SetBeacons(beacons);
         SetCameraMatrix(cameraMatrix);
@@ -98,20 +98,10 @@ namespace vbtracker {
         m_permittedOutliers = permittedOutliers;
     }
 
-    bool BeaconBasedPoseEstimator::SetBeacons(const DoubleVecVec &beacons) {
+    bool BeaconBasedPoseEstimator::SetBeacons(const Point3Vector &beacons) {
         // Our existing pose won't match anymore.
         m_gotPose = false;
-
-        for (int i = 0; i < beacons.size(); i++) {
-            if (beacons[i].size() != 3) {
-                m_beacons.clear();
-                return false;
-            }
-            cv::Point3f p(static_cast<float>(beacons[i][0]),
-                          static_cast<float>(beacons[i][1]),
-                          static_cast<float>(beacons[i][2]));
-            m_beacons.push_back(p);
-        }
+        m_beacons = beacons;
 
         return true;
     }
@@ -207,11 +197,51 @@ namespace vbtracker {
         // m_permittedOutliers outliers. Even in simulation data, we sometimes
         // find duplicate IDs for LEDs, indicating that we are getting
         // mis-identified ones sometimes.
+        // We tried using the previous guess to reduce the amount of computation
+        // being done, but this got us stuck in infinite locations.  We seem to
+        // do okay without using it, so leaving it out.
+        // @todo Make number of iterations into a parameter.
         bool usePreviousGuess = false;
+        int iterationsCount = 5;
+        cv::Mat inlierIndices;
         cv::solvePnPRansac(
             objectPoints, imagePoints, m_cameraMatrix, m_distCoeffs, m_rvec,
-            m_tvec, usePreviousGuess, 5, 8.0f,
-            static_cast<int>(objectPoints.size() - m_permittedOutliers));
+            m_tvec, usePreviousGuess, iterationsCount, 8.0f,
+            static_cast<int>(objectPoints.size() - m_permittedOutliers),
+            inlierIndices);
+
+        //==========================================================================
+        // Make sure we got all the inliers we needed.  Otherwise, reject this
+        // pose.
+        if (inlierIndices.rows < m_requiredInliers) {
+          return false;
+        }
+
+        //==========================================================================
+        // Reproject the inliers into the image and make sure they are actually
+        // close to the expected location; otherwise, we have a bad pose.
+        const double pixelReprojectionErrorForSingleAxisMax = 4;
+        if (inlierIndices.rows > 0) {
+          std::vector<cv::Point3f>  inlierObjectPoints;
+          std::vector<cv::Point2f> inlierImagePoints;
+          for (int i = 0; i < inlierIndices.rows; i++) {
+            inlierObjectPoints.push_back(objectPoints[i]);
+            inlierImagePoints.push_back(imagePoints[i]);
+          }
+          std::vector<cv::Point2f> reprojectedPoints;
+          cv::projectPoints(inlierObjectPoints, m_rvec, m_tvec, m_cameraMatrix,
+            m_distCoeffs, reprojectedPoints);
+          for (size_t i = 0; i < reprojectedPoints.size(); i++) {
+            if (reprojectedPoints[i].x - inlierImagePoints[i].x > 
+                pixelReprojectionErrorForSingleAxisMax) {
+              return false;
+            }
+            if (reprojectedPoints[i].y - inlierImagePoints[i].y > 
+              pixelReprojectionErrorForSingleAxisMax) {
+              return false;
+            }
+          }
+        }
 
         //==========================================================================
         // Convert this into an OSVR representation of the transformation that
@@ -230,7 +260,8 @@ namespace vbtracker {
         //  That is, it rotates into the camera coordinate system and then adds
         // the translation, which is in the camera coordinate system.
         //  This is the transformation we want, since it reports the sensor's
-        // position and orientation in camera space, except that we want to convert
+        // position and orientation in camera space, except that we want to
+        // convert
         // the units into meters and the orientation into a Quaternion.
         //  NOTE: This is a right-handed coordinate system with X pointing
         // towards the right from the camera center of projection, Y pointing
@@ -242,25 +273,29 @@ namespace vbtracker {
         cv::Mat rot;
         cv::Rodrigues(m_rvec, rot);
 
-        // TODO: Replace this code with Eigen code.
+        // @todo: Replace this code with Eigen code.
 
         if (rot.type() != CV_64F) {
             return false;
         }
 
         // Get the forward transform
+        // Scale to meters
         q_xyz_quat_type forward;
         forward.xyz[Q_X] = m_tvec.at<double>(0);
         forward.xyz[Q_Y] = m_tvec.at<double>(1);
         forward.xyz[Q_Z] = m_tvec.at<double>(2);
+        q_vec_scale(forward.xyz, 1e-3, forward.xyz);
 
         // Fill in a 4x4 matrix that starts as the identity
         // matrix with the 3x3 part from the rotation matrix.
+        // We need to transpose the matrix to make it row
+        // major.
         q_matrix_type rot4x4;
         for (int i = 0; i < 4; i++) {
             for (int j = 0; j < 4; j++) {
                 if ((i < 3) && (j < 3)) {
-                    rot4x4[i][j] = rot.at<double>(i, j);
+                    rot4x4[i][j] = rot.at<double>(j, i);
                 } else {
                     if (i == j) {
                         rot4x4[i][j] = 1;
@@ -272,12 +307,10 @@ namespace vbtracker {
         }
         q_from_row_matrix(forward.quat, rot4x4);
 
-        // Scale to meters
-        q_vec_scale(forward.xyz, 1e-3, forward.xyz);
-
         //==============================================================
         // Put into OSVR format.
         osvrPose3FromQuatlib(&outPose, &forward);
+
         return true;
     }
 

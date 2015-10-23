@@ -166,18 +166,38 @@ class VRPNHardwareDetect : boost::noncopyable {
                 }
 
                 // OSVR Hacker Dev Kit
-				// ML: Added in the x1532 x0B00
-                if ((dev->vendor_id == 0x1532 && dev->product_id == 0x0300) ||
-					(dev->vendor_id == 0x1532 && dev->product_id == 0x0B00) || 
-					(dev->vendor_id == 0x03EB && dev->product_id == 0x2421)) {
+                if ((dev->vendor_id == 0x1532 && dev->product_id == 0x0b00) ||
+                    (dev->vendor_id == 0x03EB && dev->product_id == 0x2421)) {
                     gotDevice = true;
                     m_handlePath(dev->path);
                     osvr::vrpnserver::VRPNDeviceRegistration reg(ctx);
+                    auto name = m_data.getName("OSVRHackerDevKit");
+                    auto decName = reg.useDecoratedName(name);
                     reg.constructAndRegisterDevice<
-                        vrpn_Tracker_OSVRHackerDevKit>(
-                        m_data.getName("OSVRHackerDevKit"));
+                        vrpn_Tracker_OSVRHackerDevKit>(name);
                     reg.setDeviceDescriptor(osvr::util::makeString(
                         com_osvr_Multiserver_OSVRHackerDevKit_json));
+                    {
+                        osvr::vrpnserver::VRPNDeviceRegistration reg2(ctx);
+                        reg2.registerDevice(
+#ifdef Never
+							new vrpn_Tracker_DeadReckoning_Rotation(
+							reg2.useDecoratedName(m_data.getName(
+							"OSVRHackerDevKitPrediction")),
+							reg2.getVRPNConnection(), "*" + decName, 1,
+							1.0 / 60.0, false));
+#else
+							// ML
+							// there is an extra arg that I will have to track down
+							new vrpn_Tracker_DeadReckoning_Rotation(
+                                reg2.useDecoratedName(m_data.getName(
+                                    "OSVRHackerDevKitPrediction")),
+                                reg2.getVRPNConnection(), "*" + decName, 1,
+                                1.0 / 60.0));
+#endif
+								reg2.setDeviceDescriptor(osvr::util::makeString(
+                            com_osvr_Multiserver_OSVRHackerDevKit_json));
+                    }
                     continue;
                 }
             }

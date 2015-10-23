@@ -24,7 +24,9 @@
 // limitations under the License.
 
 // Internal Includes
+#include <osvr/Util/WideToUTF8.h>
 #include "directx_camera_server.h"
+#include "WinVariant.h"
 
 // Library/third-party includes
 // - none
@@ -34,6 +36,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <cmath>
+#include <iostream>
+
+// Uncomment to get a full device name and path listing in enumeration, instead
+// of silently enumerating and early-exiting when we find one we like.
+//#define VERBOSE_ENUM
 
 //#define HACK_TO_REOPEN
 //#define	DEBUG
@@ -107,7 +114,8 @@ class directx_samplegrabber_callback : public ISampleGrabberCB {
     // connected to in order to avoid segmentations faults.
     STDMETHODIMP_(ULONG) AddRef(void) { return 1; }
     STDMETHODIMP_(ULONG) Release(void) { return 2; }
-    STDMETHOD(QueryInterface)(REFIID interfaceRequested, void **handleToInterfaceRequested);
+    STDMETHOD(QueryInterface)
+    (REFIID interfaceRequested, void **handleToInterfaceRequested);
 
     // One of the following two methods must be defined do to the
     // ISampleGraberCB parent class; this is the way we hear from the grabber.
@@ -127,8 +135,8 @@ class directx_samplegrabber_callback : public ISampleGrabberCB {
 
 static WinPtr<IPin> GetPin(IBaseFilter &pFilter, PIN_DIRECTION const PinDir) {
     auto pEnum = WinPtr<IEnumPins>{};
-    auto pPin = WinPtr<IPin>{};
     pFilter.EnumPins(AttachPtr(pEnum));
+    auto pPin = WinPtr<IPin>{};
     while (pEnum->Next(1, AttachPtr(pPin), nullptr) == S_OK) {
         PIN_DIRECTION PinDirThis;
         pPin->QueryDirection(&PinDirThis);
@@ -292,13 +300,43 @@ bool directx_camera_server::read_one_frame(unsigned minX, unsigned maxX,
     return true;
 }
 
-//---------------------------------------------------------------------
-// Open the camera specified and determine its available features and
-// parameters.
+inline std::string getProperty(IMoniker &mon, const wchar_t *propName) {
 
-bool directx_camera_server::open_and_find_parameters(const int which,
-                                                     unsigned width,
-                                                     unsigned height) {
+    auto pPropBag = WinPtr<IPropertyBag>{};
+    mon.BindToStorage(nullptr, nullptr, IID_IPropertyBag, AttachPtr(pPropBag));
+
+    auto ret = std::string{};
+    if (!pPropBag) {
+#ifdef DEBUG
+        std::cerr << "Could not get the property bag" << std::endl;
+#endif
+        return ret;
+    }
+    auto val = WinVariant{};
+    pPropBag->Read(propName, AttachVariant(val), nullptr);
+    if (!contains<std::wstring>(val)) {
+#ifdef DEBUG
+        std::cerr << "!contains<std::wstring>(val) for property "
+                  << osvr::util::wideToUTF8String(propName) << std::endl;
+#endif
+        return ret;
+    }
+    return osvr::util::wideToUTF8String(get<std::wstring>(val));
+}
+
+inline std::string getDevicePath(IMoniker &mon) {
+    return getProperty(mon, L"DevicePath");
+}
+
+inline std::string getDeviceHumanDesc(IMoniker &mon) {
+    auto desc = getProperty(mon, L"Description");
+    if (desc.empty()) {
+        desc = getProperty(mon, L"FriendlyName");
+    }
+    return desc;
+}
+
+bool directx_camera_server::start_com_and_graphbuilder() {
     HRESULT hr;
 //-------------------------------------------------------------------
 // Create COM and DirectX objects needed to access a video stream.
@@ -338,56 +376,176 @@ bool directx_camera_server::open_and_find_parameters(const int which,
            "SetFilterGraph\n");
 #endif
     _pBuilder->SetFiltergraph(_pGraph.get());
+    return true;
+}
 
-//-------------------------------------------------------------------
-// Go find a video device to use: in this case, we are using the first
-// one we find.
+/// @brief Checks something to see if it's false-ish, printing a message and
+/// throwing an exception if it is.
+template <typename T>
+inline bool didConstructionFail(T const &ptr, const char objName[]) {
+    if (!ptr) {
+        fprintf(stderr, "directx_camera_server: Can't create %s\n", objName);
+        return true;
+    }
+    return false;
+}
 
+// Enumerates the capture devices available, returning the first one where the
+// passed functor (taking IMoniker& as a param) returns true.
+template <typename F>
+inline WinPtr<IMoniker> find_first_capture_device_where(F &&f) {
+    auto ret = WinPtr<IMoniker>{};
 // Create the system device enumerator.
 #ifdef DEBUG
-    printf("directx_camera_server::open_and_find_parameters(): Before "
+    printf("find_first_capture_device_where(): Before "
            "CoCreateInstance SystemDeviceEnum\n");
 #endif
     auto pDevEnum = WinPtr<ICreateDevEnum>{};
     CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC,
                      IID_ICreateDevEnum, AttachPtr(pDevEnum));
-    checkForConstructionError(pDevEnum, "device enumerator");
+    if (didConstructionFail(pDevEnum, "device enumerator")) {
+        return ret;
+    }
 
 // Create an enumerator for video capture devices.
+// https://msdn.microsoft.com/en-us/library/windows/desktop/dd407292(v=vs.85).aspx
 #ifdef DEBUG
-    printf("directx_camera_server::open_and_find_parameters(): Before "
+    printf("find_first_capture_device_where(): Before "
            "CreateClassEnumerator\n");
 #endif
     auto pClassEnum = WinPtr<IEnumMoniker>{};
     pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
                                     AttachPtr(pClassEnum), 0);
-    checkForConstructionError(pClassEnum, "video enumerator (no cameras?)");
+    if (didConstructionFail(pClassEnum, "video enumerator (no cameras?)")) {
+        return ret;
+    }
 
 #ifdef DEBUG
-    printf("directx_camera_server::open_and_find_parameters(): Before Loop "
+    printf("find_first_capture_device_where(): Before Loop "
            "over enumerators\n");
 #endif
-    ULONG cFetched;
+// see
+// https://msdn.microsoft.com/en-us/library/windows/desktop/dd377566(v=vs.85).aspx
+// for how to choose a camera
+#ifdef VERBOSE_ENUM
+    printf("\ndirectx_camera_server find_first_capture_device_where(): "
+           "Beginning enumeration of video capture devices.\n\n");
+#endif
     auto pMoniker = WinPtr<IMoniker>{};
-    // Skip (which - 1) cameras
-    for (int i = 0; i < which - 1; i++) {
-        if (pClassEnum->Next(1, AttachPtr(pMoniker), &cFetched) != S_OK) {
-            fprintf(stderr, "directx_camera_server::open_and_find_parameters():"
-                            " Can't open camera (not enough cameras)\n");
-            return false;
+    while (pClassEnum->Next(1, AttachPtr(pMoniker), nullptr) == S_OK) {
+
+#ifdef VERBOSE_ENUM
+        printf("- '%s' at path:\n  '%s'\n\n",
+               getDeviceHumanDesc(*pMoniker).c_str(),
+               getDevicePath(*pMoniker).c_str());
+#endif // VERBOSE_ENUM
+
+        if (!ret && f(*pMoniker)) {
+            ret = pMoniker;
+#ifdef VERBOSE_ENUM
+            printf("^^ Accepted that device! (Would have exited "
+                   "enumeration here if VERBOSE_ENUM were not defined)\n\n");
+#else // !VERBOSE_ENUM
+            return ret; // Early out if we find it and we're not in verbose enum
+                        // mode.
+#endif
         }
     }
 
-    auto pSrc = WinPtr<IBaseFilter>{};
-    // Take the next camera and bind it
-    if (pClassEnum->Next(1, AttachPtr(pMoniker), &cFetched) == S_OK) {
-        // Bind the first moniker to a filter object.
-        pMoniker->BindToObject(0, 0, IID_IBaseFilter, AttachPtr(pSrc));
-    } else {
-        fprintf(stderr, "directx_camera_server::open_and_find_parameters(): "
-                        "Can't open camera (not enough cameras)\n");
+#ifdef VERBOSE_ENUM
+    printf("\ndirectx_camera_server find_first_capture_device_where(): End "
+           "enumeration.\n\n");
+#endif
+
+    if (!ret) {
+        fprintf(stderr,
+                "directx_camera_server find_first_capture_device_where(): "
+                "No device satisfied the predicate.\n");
+    }
+    return ret;
+}
+
+//---------------------------------------------------------------------
+// Open the camera specified and determine its available features and
+// parameters.
+
+bool directx_camera_server::open_and_find_parameters(const int which,
+                                                     unsigned width,
+                                                     unsigned height) {
+    auto graphbuilderRet = start_com_and_graphbuilder();
+    if (!graphbuilderRet) {
         return false;
     }
+    std::size_t i = 0;
+
+    auto pMoniker = find_first_capture_device_where([&i, which](IMoniker &) {
+        if (i == which) {
+            return true;
+        }
+        ++i;
+        return false;
+    });
+
+    if (!pMoniker) {
+        fprintf(stderr, "directx_camera_server::open_and_find_parameters(): "
+                        "Could not get the device requested - not enough "
+                        "cameras?\n");
+        return false;
+    }
+#ifdef DEBUG
+    std::cout << "directx_camera_server::open_and_find_parameters(): Accepted!"
+              << std::endl;
+#endif
+    return open_moniker_and_finish_setup(pMoniker, width, height);
+}
+
+bool directx_camera_server::open_and_find_parameters(
+    std::string const &pathPrefix, unsigned width, unsigned height) {
+    auto graphbuilderRet = start_com_and_graphbuilder();
+    if (!graphbuilderRet) {
+        return false;
+    }
+
+    auto pMoniker =
+        find_first_capture_device_where([&pathPrefix](IMoniker &mon) {
+            auto path = getDevicePath(mon);
+            if (path.length() < pathPrefix.length()) {
+                return false;
+            }
+            return (path.substr(0, pathPrefix.length()) == pathPrefix);
+        });
+
+    if (!pMoniker) {
+        fprintf(stderr, "directx_camera_server::open_and_find_parameters(): "
+                        "Could not get the device requested - not enough "
+                        "cameras?\n");
+        return false;
+    }
+
+#ifdef DEBUG
+    std::cout << "directx_camera_server::open_and_find_parameters(): Accepted!"
+              << std::endl;
+#endif
+    return open_moniker_and_finish_setup(pMoniker, width, height);
+}
+
+bool directx_camera_server::open_moniker_and_finish_setup(
+    WinPtr<IMoniker> pMoniker, unsigned width, unsigned height) {
+
+    if (!pMoniker) {
+        fprintf(stderr,
+                "directx_camera_server::open_moniker_and_finish_setup(): "
+                "Null device moniker passed: no device found?\n");
+        return false;
+    }
+
+    printf("directx_camera_server: Using capture device '%s' at path '%s'\n",
+           getDeviceHumanDesc(*pMoniker).c_str(),
+           getDevicePath(*pMoniker).c_str());
+
+    // Bind the chosen moniker to a filter object.
+    auto pSrc = WinPtr<IBaseFilter>{};
+    pMoniker->BindToObject(0, 0, IID_IBaseFilter, AttachPtr(pSrc));
 
     //-------------------------------------------------------------------
     // Construct the sample grabber callback handler that will be used
@@ -505,8 +663,8 @@ bool directx_camera_server::open_and_find_parameters(const int which,
     // XXX See if this is a video tuner card by querying for that interface.
     // Set it to read the video channel if it is one.
     auto pTuner = WinPtr<IAMTVTuner>{};
-    hr = _pBuilder->FindInterface(nullptr, nullptr, pSrc.get(), IID_IAMTVTuner,
-                                  AttachPtr(pTuner));
+    auto hr = _pBuilder->FindInterface(nullptr, nullptr, pSrc.get(),
+                                       IID_IAMTVTuner, AttachPtr(pTuner));
     if (pTuner) {
 #ifdef DEBUG
         printf("directx_camera_server::open_and_find_parameters(): Found a TV "
@@ -535,7 +693,6 @@ bool directx_camera_server::open_and_find_parameters(const int which,
     VIDEOINFOHEADER *pVih;
     if (mt.formattype == FORMAT_VideoInfo ||
         mt.formattype == FORMAT_VideoInfo2) {
-        pVih = reinterpret_cast<VIDEOINFOHEADER *>(mt.pbFormat);
         pVih = reinterpret_cast<VIDEOINFOHEADER *>(mt.pbFormat);
     } else {
         fprintf(stderr, "directx_camera_server::open_and_find_parameters(): "
@@ -630,6 +787,38 @@ directx_camera_server::directx_camera_server(int which, unsigned width,
     //---------------------------------------------------------------------
     // Allocate a buffer that is large enough to read the maximum-sized
     // image with no binning.
+    _buflen =
+        (unsigned)(_num_rows * _num_columns * 3); // Expect B,G,R; 8-bits each.
+    if ((_buffer = new unsigned char[_buflen]) == nullptr) {
+        fprintf(stderr, "directx_camera_server::directx_camera_server(): Out "
+                        "of memory for buffer\n");
+        _status = false;
+        return;
+    }
+    // No image in memory yet.
+    _minX = _maxX = _minY = _maxY = 0;
+
+#ifdef HACK_TO_REOPEN
+    close_device();
+#endif
+
+    _status = true;
+}
+
+directx_camera_server::directx_camera_server(std::string const &pathPrefix,
+                                             unsigned width, unsigned height) {
+    //---------------------------------------------------------------------
+    if (!open_and_find_parameters(pathPrefix, width, height)) {
+        fprintf(stderr, "directx_camera_server::directx_camera_server(): "
+                        "Cannot open camera\n");
+        _status = false;
+        return;
+    }
+
+    //---------------------------------------------------------------------
+    // Allocate a buffer that is large enough to read the maximum-sized
+    // image with no binning.
+    /// @todo replace with a vector that gets sized here!
     _buflen =
         (unsigned)(_num_rows * _num_columns * 3); // Expect B,G,R; 8-bits each.
     if ((_buffer = new unsigned char[_buflen]) == nullptr) {

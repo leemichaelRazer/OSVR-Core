@@ -9,6 +9,10 @@ if(ANDROID AND CMAKE_VERSION VERSION_LESS 3.1.0)
     message(FATAL_ERROR "You must use CMake 3.1.0 or greater to build for Android.")
 endif()
 
+if (NOT DEFINED CMAKE_MACOSX_RPATH)
+    set(CMAKE_MACOSX_RPATH ON)
+endif()
+
 set(LOCAL_CMAKE_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake-local")
 # Custom CMake modules from https://github.com/rpavlik/cmake-modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" "${LOCAL_CMAKE_MODULE_DIR}")
@@ -17,6 +21,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" "${LOCAL_CMAKE
 # Package Options
 ###
 include(Version)
+include(GetSubprojectStatus)
 
 ###
 # Library ABI versions
@@ -65,6 +70,11 @@ if(ANDROID)
     set(BUILD_OPENCV_CAMERA_PLUGIN OFF)
 endif()
 
+set(BUILD_JOINTCLIENTKIT OFF)
+if(BUILD_CLIENT AND BUILD_SERVER)
+    set(BUILD_JOINTCLIENTKIT ON)
+endif()
+
 set(BUILD_VIDEOTRACKER_PLUGIN OFF)
 # TODO enable this on non-Windows once it's not tied to the DirectShow driver.
 if(WIN32 AND BUILD_SERVER_PLUGINS)
@@ -78,6 +88,12 @@ if(WIN32 AND BUILD_SERVER_PLUGINS)
         set(BUILD_VIDEOTRACKER_PLUGIN ON)
     else()
         message(STATUS "Skipping the video-based tracker plugin: Requires the 'Microsoft Windows SDK Update for Windows Vista' or older <http://www.microsoft.com/en-us/download/details.aspx?id=23719>")
+        if(NOT DIRECTSHOW_QEDIT_INCLUDE_DIR)
+            message(STATUS " - DIRECTSHOW_QEDIT_INCLUDE_DIR not found: Couldn't find a qedit.h file declaring ISampleGrabber.")
+        endif()
+        if(NOT DIRECTSHOW_STRMIIDS_LIBRARY)
+            message(STATUS " - DIRECTSHOW_STRMIIDS_LIBRARY not found: Couldn't find the strmiids.lib or libstrmiids.a library.")
+        endif()
     endif()
 endif()
 ###
@@ -272,9 +288,19 @@ endif()
 add_subdirectory(vendor)
 
 # Set RPATH for dynamic library search.
-if(NOT WIN32 AND NOT APPLE)
-    set(CMAKE_INSTALL_RPATH "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
-    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+if(NOT WIN32) # Have not set this up for Windows yet
+    list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
+    if("${isSystemDir}" STREQUAL "-1")
+        if(APPLE)
+            set(CMAKE_INSTALL_RPATH "@loader_path/../${CMAKE_INSTALL_LIBDIR}")
+        else()
+            set(CMAKE_INSTALL_RPATH "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+        endif()
+    else() #Use default rpath if libs installed in a system dir
+        set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+    endif()
 endif()
 set(HEADER_BASE "${CMAKE_CURRENT_SOURCE_DIR}/inc")
 set(BUILDTREE_HEADER_BASE "${CMAKE_CURRENT_BINARY_DIR}/src")
@@ -354,6 +380,10 @@ set(README_MARKDOWN
     CONTRIBUTING.md
     README.md
     NEWS.md)
+
+if(BUILD_WITH_TRACING)
+    list(APPEND README_MARKDOWN "${ETWPROVIDERS_OSVR_README}")
+endif()
 if(MARKDOWN_FOUND)
     include(UseMarkdown)
     add_markdown_target(markdown-readme ${CMAKE_CURRENT_BINARY_DIR} ${README_MARKDOWN})
@@ -384,17 +414,42 @@ add_doxygen("${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile-external"
     INSTALL_COMPONENT DevelDocs
     NO_PDF)
 
+# Replace some of the images from doxygen.
+if(TARGET doc AND TARGET doc_external)
+    foreach(fn ftv2mnode.png ftv2pnode.png ftv2mlastnode.png sync_on.png sync_off.png)
+        add_custom_command(TARGET doc
+            POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/assets/doxygen/${fn}" "${CMAKE_CURRENT_BINARY_DIR}/docs-generated/html/"
+            VERBATIM
+            COMMENT "Copying image ${fn} to override Doxygen theme")
+
+        add_custom_command(TARGET doc_external
+            POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/assets/doxygen/${fn}" "${CMAKE_CURRENT_BINARY_DIR}/docs-external/html/"
+            VERBATIM
+            COMMENT "Copying image ${fn} to override Doxygen theme")
+    endforeach()
+endif()
+
 ###
 # Set Up Package for External Usage
 ###
 include(CMakePackageConfigHelpers)
+include(GenerateCompatibilityVersionFile)
 set(PLUGINDIR ${OSVR_PLUGIN_DIR})
 set(CONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/osvr")
 
-write_basic_package_version_file(
+generate_compatibility_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/osvrConfigVersion.cmake"
     VERSION ${OSVR_VERSION}
-    COMPATIBILITY AnyNewerVersion)
+    COMPATIBILITY AnyNewerVersion
+    C_ABI)
+
+generate_compatibility_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/osvrInternalConfigVersion.cmake"
+    VERSION ${OSVR_VERSION}
+    COMPATIBILITY AnyNewerVersion
+    CXX_ABI)
 
 export(EXPORT osvrTargets
     FILE "${CMAKE_CURRENT_BINARY_DIR}/osvrTargets.cmake"
@@ -444,6 +499,7 @@ install(FILES
     Devel)
 
 if(WIN32)
+    # Windows-only helpers for CMake
     install(FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GetMSVCVersion.cmake"
         "${LOCAL_CMAKE_MODULE_DIR}/CMakeBoostHelper.cmake"
@@ -451,6 +507,14 @@ if(WIN32)
         ${CONFIG_INSTALL_DIR}
         COMPONENT
         Devel)
+endif()
+if(CMAKE_HOST_WIN32)
+    # Scripts to register the SDK with CMake for easier building.
+    install(FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/devtools/add_sdk_to_registry.cmd"
+        "${CMAKE_CURRENT_SOURCE_DIR}/devtools/add_sdk_to_registry.ps1"
+        DESTINATION .
+        COMPONENT Devel)
 endif()
 
 if(ANDROID AND "${ANDROID_STL}" STREQUAL "gnustl_shared")

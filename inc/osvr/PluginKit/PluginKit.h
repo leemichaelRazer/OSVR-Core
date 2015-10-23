@@ -61,9 +61,28 @@ namespace pluginkit {
         PluginContext(OSVR_PluginRegContext ctx) : m_ctx(ctx) {}
 
         /// @brief Register a hardware detect callback
+        ///
+        /// Your callback should take one parameter of type
+        /// ::OSVR_PluginRegContext and return a value of type ::OSVR_ReturnCode
+        ///
         /// @sa ::osvr::pluginkit::registerHardwareDetectCallback()
         template <typename T> void registerHardwareDetectCallback(T functor) {
             ::osvr::pluginkit::registerHardwareDetectCallback(m_ctx, functor);
+        }
+
+        /// @brief Register a driver instantiation callback
+        ///
+        /// Your callback should take a parameter of type
+        /// ::OSVR_PluginRegContext and a parameter of type const char * (the
+        /// JSON parameters as a string) and return a value of type
+        /// ::OSVR_ReturnCode
+        ///
+        /// @sa ::osvr::pluginkit::registerDriverInstantiationCallback()
+        template <typename T>
+        void registerDriverInstantiationCallback(const char driverName[],
+                                                 T functor) {
+            ::osvr::pluginkit::registerDriverInstantiationCallback(
+                m_ctx, driverName, functor);
         }
 
         /// @brief Register the given object (assumed to be deletable by

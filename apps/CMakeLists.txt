@@ -13,7 +13,8 @@ if(BUILD_CLIENT_APPS)
         osvrClientKitCpp
         osvrCommon
         jsoncpp_lib
-        boost_program_options)
+        boost_program_options
+        osvr_cxx11_flags)
     set_target_properties(osvr_print_tree PROPERTIES
         FOLDER "OSVR Stock Applications")
     install(TARGETS osvr_print_tree
@@ -31,7 +32,21 @@ if(BUILD_CLIENT_APPS)
     install(TARGETS osvr_print_treeRZ
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
-		add_executable(osvr_reset_yaw
+    add_executable(osvr_dump_tree_json
+        osvr_dump_tree_json.cpp)
+    target_link_libraries(osvr_dump_tree_json
+        osvrClientKitCpp
+        osvrCommon
+        jsoncpp_lib
+        boost_program_options
+        osvr_cxx11_flags)
+    set_target_properties(osvr_dump_tree_json PROPERTIES
+        FOLDER "OSVR Stock Applications")
+    #install(TARGETS osvr_dump_tree_json
+    #    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+
+    add_executable(osvr_reset_yaw
+
         osvr_reset_yaw.cpp
         ClientMainloop.h
         ClientMainloopThread.h)

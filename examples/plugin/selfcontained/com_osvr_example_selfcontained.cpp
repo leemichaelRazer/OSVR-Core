@@ -28,7 +28,7 @@
 #include <osvr/PluginKit/AnalogInterfaceC.h>
 
 // Generated JSON header file
-#include "com_osvr_example_selfcontainedDetectAndCreate_json.h"
+#include "com_osvr_example_selfcontained_json.h"
 
 // Library/third-party includes
 // - none
@@ -39,27 +39,35 @@
 // Anonymous namespace to avoid symbol collision
 namespace {
 
-class AnalogSyncDevice {
+class AnalogExampleDevice {
   public:
-    AnalogSyncDevice(OSVR_PluginRegContext ctx) : m_myVal(0) {
+    AnalogExampleDevice(OSVR_PluginRegContext ctx) : m_myVal(0) {
         /// Create the initialization options
         OSVR_DeviceInitOptions opts = osvrDeviceCreateInitOptions(ctx);
 
         /// Indicate that we'll want 1 analog channel.
         osvrDeviceAnalogConfigure(opts, &m_analog, 1);
 
-        /// Create the sync device token with the options
-        m_dev.initSync(ctx, "MySyncDevice", opts);
+        /// Create the device token with the options
+        m_dev.initAsync(ctx, "MyExampleDevice", opts);
 
         /// Send JSON descriptor
-        m_dev.sendJsonDescriptor(
-            com_osvr_example_selfcontainedDetectAndCreate_json);
+        m_dev.sendJsonDescriptor(com_osvr_example_selfcontained_json);
 
         /// Register update callback
         m_dev.registerUpdateCallback(this);
     }
 
     OSVR_ReturnCode update() {
+        /// This dummy loop just wastes time, to pretend to be your plugin
+        /// blocking to wait for the arrival of data. It should be completely
+        /// removed from your plugin.
+        volatile int j; // volatile to keep it from being optimized out.
+        for (int i = 0; i < 10000; ++i) {
+            j = i;
+        }
+        /// End time-waster loop.
+
         /// Make up some dummy data that changes to report.
         m_myVal = (m_myVal + 0.1);
         if (m_myVal > 10.0) {
@@ -85,12 +93,13 @@ class HardwareDetection {
         std::cout << "PLUGIN: Got a hardware detection request" << std::endl;
         if (!m_found) {
             std::cout << "PLUGIN: We have detected our fake device! Doing "
-                         "setup stuff!" << std::endl;
+                         "setup stuff!"
+                      << std::endl;
             m_found = true;
 
             /// Create our device object
             osvr::pluginkit::registerObjectForDeletion(
-                ctx, new AnalogSyncDevice(ctx));
+                ctx, new AnalogExampleDevice(ctx));
         }
         return OSVR_RETURN_SUCCESS;
     }
@@ -102,7 +111,7 @@ class HardwareDetection {
 };
 } // namespace
 
-OSVR_PLUGIN(com_osvr_example_selfcontainedDetectAndCreate) {
+OSVR_PLUGIN(com_osvr_example_selfcontained) {
     osvr::pluginkit::PluginContext context(ctx);
 
     /// Register a detection callback function object.

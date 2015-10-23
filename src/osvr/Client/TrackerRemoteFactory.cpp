@@ -37,6 +37,7 @@
 #include "PureClientContext.h"
 #include <osvr/Client/InterfaceTree.h>
 #include <osvr/Util/Verbosity.h>
+#include <osvr/Common/Tracing.h>
 
 // Library/third-party includes
 #include <vrpn_Tracker.h>
@@ -88,6 +89,7 @@ namespace client {
 
       private:
         void m_handle(vrpn_TRACKERCB const &info) {
+            common::tracing::markNewTrackerData();
             OSVR_PoseReport report;
             report.sensor = info.sensor;
             OSVR_TimeValue timestamp;
@@ -140,21 +142,12 @@ namespace client {
 
         shared_ptr<RemoteHandler> ret;
 
-        /// @todo set this struct correctly from the descriptor, or perhaps
-        /// the path?
+        /// @todo set this struct correctly from the descriptor
         VRPNTrackerHandler::Options opts;
 
-        auto interfaceType = source.getInterfaceName();
-        if ("position" == interfaceType) {
-            opts.reportPosition = true;
-        } else if ("orientation" == interfaceType) {
-            opts.reportOrientation = true;
-        } else {
-            /// pose and tracker both imply full reports (?)
-            opts.reportOrientation = true;
-            opts.reportPosition = true;
-            opts.reportPose = true;
-        }
+        opts.reportOrientation = true;
+        opts.reportPosition = true;
+        opts.reportPose = true;
 
         auto const &devElt = source.getDeviceElement();
 
