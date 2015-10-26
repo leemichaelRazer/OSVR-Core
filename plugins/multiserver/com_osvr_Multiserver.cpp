@@ -180,7 +180,7 @@ class VRPNHardwareDetect : boost::noncopyable {
                     {
                         osvr::vrpnserver::VRPNDeviceRegistration reg2(ctx);
                         reg2.registerDevice(
-#ifdef Never
+#ifndef Never
 							new vrpn_Tracker_DeadReckoning_Rotation(
 							reg2.useDecoratedName(m_data.getName(
 							"OSVRHackerDevKitPrediction")),

@@ -151,7 +151,30 @@ VOID InstallService(void)
         return;
     }
 
-    SERVICE_DESCRIPTION Description = { SVC_DESCRIPTION };
+	SERVICE_FAILURE_ACTIONS sfa;
+	SC_ACTION actions;
+
+	sfa.dwResetPeriod = INFINITE;
+	sfa.lpCommand = NULL;
+	sfa.lpRebootMsg = NULL;
+	sfa.cActions = 1;
+	sfa.lpsaActions = &actions;
+
+	sfa.lpsaActions[0].Type = SC_ACTION_RESTART;
+	sfa.lpsaActions[0].Delay = 0;
+
+	if (ChangeServiceConfig2(schService, SERVICE_CONFIG_FAILURE_ACTIONS, &sfa) == FALSE)
+	{
+		CString csMessage;
+		csMessage.Format(_T("ChangeServiceConfig2: set recovery failed with error %d"), GetLastError());
+		ServiceReportEvent(EVENTLOG_ERROR_TYPE, csMessage.GetBuffer());
+		CloseServiceHandle(schService);
+		CloseServiceHandle(schSCManager);
+		return;
+	}
+
+		
+	SERVICE_DESCRIPTION Description = { SVC_DESCRIPTION };
 	if (ChangeServiceConfig2(schService, SERVICE_CONFIG_DESCRIPTION, &Description)==FALSE)
     {
         CString csMessage;

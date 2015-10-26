@@ -9,7 +9,7 @@ CServiceImpl::CServiceImpl()
 	configName = osvr::server::getDefaultConfigFilename();
 	{
 		CString csMessage;
-		csMessage.Format(_T("ConfigName %s"), configName.c_str());
+		csMessage.Format(_T("CServiceImpl::CServiceImpl"));
 		ServiceReportEvent(EVENTLOG_INFORMATION_TYPE, csMessage.GetBuffer());
 	}
 }
@@ -23,7 +23,7 @@ BOOL CServiceImpl::Init()
 	configName = osvr::server::getDefaultConfigFilename();
 	{
 		CString csMessage;
-		csMessage.Format(_T("ConfigName2 %s"), configName.c_str());
+		csMessage.Format(_T("CServiceImpl::Init"));
 		ServiceReportEvent(EVENTLOG_INFORMATION_TYPE, csMessage.GetBuffer());
 	}
 
@@ -87,7 +87,7 @@ BOOL CServiceImpl::Start()
 	if (!server)
 	{
 		CString csMessage;
-		csMessage.Format(_T("Server did not instantiate or start"));
+		csMessage.Format(_T("CServiceImpl::Start - Server did not instantiate or start"));
 		ServiceReportEvent(EVENTLOG_ERROR_TYPE, csMessage.GetBuffer());
 		return FALSE;
 	}
