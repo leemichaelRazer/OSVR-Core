@@ -28,7 +28,7 @@ public:
 private:
 
 	osvr::server::ServerPtr server;
-	std::string configName;
+	CString configName;
 
 	// Redirects used for std::cout and std:cerr
 	std::streambuf *o_psbuf, *o_backup;

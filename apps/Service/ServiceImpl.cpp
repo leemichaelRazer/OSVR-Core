@@ -6,7 +6,7 @@ VOID ServiceReportEvent(WORD EventType, LPTSTR szMessage);
 
 CServiceImpl::CServiceImpl()
 {
-	configName = osvr::server::getDefaultConfigFilename();
+	configName = CString(osvr::server::getDefaultConfigFilename());
 	{
 		CString csMessage;
 		csMessage.Format(_T("CServiceImpl::CServiceImpl"));
@@ -20,7 +20,7 @@ CServiceImpl::~CServiceImpl()
 
 BOOL CServiceImpl::Init()
 {
-	configName = osvr::server::getDefaultConfigFilename();
+	configName = CString(osvr::server::getDefaultConfigFilename());
 	{
 		CString csMessage;
 		csMessage.Format(_T("CServiceImpl::Init"));
@@ -57,6 +57,11 @@ BOOL CServiceImpl::Start()
 	//char path[512];
 	//DWORD path_length = 512;
 
+	// This prints the environment variable value
+	TCHAR Variable[MAX_PATH];
+	GetEnvironmentVariable(_T("PROGRAMDATA"), Variable, MAX_PATH);
+	CString config_path = Variable + CString("\\OSVR\\") + configName;
+
 	char *path = "c:/Windows/System32/OSVR/osvr_server_config.json";
 
 	//HKEY key;
@@ -81,7 +86,8 @@ BOOL CServiceImpl::Start()
 	//RegCloseKey(key);
 
 
-	server = osvr::server::configureServerFromFile("C:/ProgramData/OSVR/osvr_server_config.json");
+	server = osvr::server::configureServerFromFile(CStringA(config_path).GetString());
+	//server = osvr::server::configureServerFromFile("C:/ProgramData/OSVR/osvr_server_config.json");
 	//server = osvr::server::configureServerFromFile("C:/Users/OSVR/Documents/GitHub/OSVR-Core/Build/bin/Release/osvr_server_config.json");
 
 	if (!server)
