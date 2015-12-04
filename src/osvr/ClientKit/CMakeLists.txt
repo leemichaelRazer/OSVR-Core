@@ -19,7 +19,8 @@ set(API
     "${HEADER_LOCATION}/InterfaceStateC.h"
     "${HEADER_LOCATION}/Parameters.h"
     "${HEADER_LOCATION}/ParametersC.h"
-    "${HEADER_LOCATION}/SystemCallbackC.h")
+    "${HEADER_LOCATION}/SystemCallbackC.h"
+    "${HEADER_LOCATION}/TransformsC.h")
 
 set(SOURCE
     ClientKitC.cpp
@@ -30,7 +31,8 @@ set(SOURCE
     InterfaceCallbackC.cpp
     InterfaceStateC.cpp
     ParametersC.cpp
-    SystemCallbackC.cpp)
+    SystemCallbackC.cpp
+    TransformsC.cpp)
 
 osvr_add_library()
 
@@ -74,5 +76,4 @@ osvr_add_interface_library(Imaging)
 # since we don't need the same version in the same place.
 target_link_libraries(${LIBNAME_INTERFACE}
     INTERFACE
-    ${LIBNAME_FULL}Cpp
-    $<BUILD_INTERFACE:opencv_core>)
+    ${LIBNAME_FULL}Cpp)

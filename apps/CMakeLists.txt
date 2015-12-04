@@ -5,8 +5,15 @@ if(BUILD_EXPERIMENTAL_APPS AND (NOT BUILD_SERVER OR NOT BUILD_CLIENT))
 endif()
 
 if(BUILD_CLIENT_APPS)
+    ###
+    # PathTreeExport - installed
+    ###
     add_subdirectory(PathTreeExport)
+    add_subdirectory(osvr_log_to_csv)
 
+    ###
+    # osvr_print_tree - installed
+    ###
     add_executable(osvr_print_tree
         osvr_print_tree.cpp)
     target_link_libraries(osvr_print_tree
@@ -20,7 +27,7 @@ if(BUILD_CLIENT_APPS)
     install(TARGETS osvr_print_tree
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
-    add_executable(osvr_print_treeRZ
+	add_executable(osvr_print_treeRZ
         osvr_print_treeRZ.cpp)
     target_link_libraries(osvr_print_treeRZ
         osvrClientKitCpp
@@ -32,6 +39,9 @@ if(BUILD_CLIENT_APPS)
     install(TARGETS osvr_print_treeRZ
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
+    ###
+    # osvr_dump_tree_json - NOT installed
+    ###
     add_executable(osvr_dump_tree_json
         osvr_dump_tree_json.cpp)
     target_link_libraries(osvr_dump_tree_json
@@ -45,6 +55,9 @@ if(BUILD_CLIENT_APPS)
     #install(TARGETS osvr_dump_tree_json
     #    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
+    ###
+    # osvr_reset_yaw - installed
+    ###
     add_executable(osvr_reset_yaw
 
         osvr_reset_yaw.cpp
@@ -80,18 +93,28 @@ if(BUILD_CLIENT_APPS)
 endif()
 
 if(BUILD_SERVER_EXAMPLES)
+    ###
+    # BasicServer - installed to ExtraSampleBinaries
+    ###
     add_executable(BasicServer BasicServer.cpp)
     target_link_libraries(BasicServer
         osvrServer
         jsoncpp_lib)
     set_target_properties(BasicServer PROPERTIES
         FOLDER "OSVR Stock Applications")
+    if(NOT WIN32)
+        set_target_properties(BasicServer PROPERTIES
+            INSTALL_RPATH "${CMAKE_INSTALL_RPATH};${EXTRABINARIES_INSTALL_RPATH}")
+    endif()
 
     install(TARGETS BasicServer
         RUNTIME DESTINATION ${EXTRA_SAMPLE_BINDIR} COMPONENT ExtraSampleBinaries)
 endif()
 
 if(BUILD_EXPERIMENTAL_APPS)
+    ###
+    # osvr_calibrate - EXPERIMENTAL - not built by default but installed in ExtraSampleBinaries if built
+    ###
     add_executable(osvr_calibrate
         osvr_calibrate.cpp
         ClientMainloop.h
@@ -107,7 +130,14 @@ if(BUILD_EXPERIMENTAL_APPS)
         boost_program_options)
     set_target_properties(osvr_calibrate PROPERTIES
         FOLDER "OSVR Experimental Applications")
+    if(NOT WIN32)
+        set_target_properties(osvr_calibrate PROPERTIES
+            INSTALL_RPATH "${CMAKE_INSTALL_RPATH};${EXTRABINARIES_INSTALL_RPATH}")
+    endif()
 
+    ###
+    # diagnose-rotation - EXPERIMENTAL - not built by default but installed in ExtraSampleBinaries if built
+    ###
     add_executable(diagnose-rotation
         diagnose-rotation.cpp
         ClientMainloop.h
@@ -123,12 +153,21 @@ if(BUILD_EXPERIMENTAL_APPS)
         boost_program_options)
     set_target_properties(diagnose-rotation PROPERTIES
         FOLDER "OSVR Experimental Applications")
+    if(NOT WIN32)
+        set_target_properties(diagnose-rotation PROPERTIES
+            INSTALL_RPATH "${CMAKE_INSTALL_RPATH};${EXTRABINARIES_INSTALL_RPATH}")
+    endif()
 
-    install(TARGETS osvr_calibrate osvr_reset_yaw diagnose-rotation
+    # Install the experimental apps
+    install(TARGETS osvr_calibrate diagnose-rotation
         RUNTIME DESTINATION ${EXTRA_SAMPLE_BINDIR} COMPONENT ExperimentalApps)
 endif()
 
 if(BUILD_SERVER_APP)
+
+    ###
+    # osvr_server - installed
+    ###
     set(OSVR_SERVER_RESOURCE)
     if(WIN32)
         set(OSVR_SERVER_RESOURCE osvr_server.rc)
@@ -152,49 +191,63 @@ if(BUILD_SERVER_APP)
     install(TARGETS osvr_server osvr_services
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
-    set(FILE_OUTPUTS)
-
-    # Grab all the config files with a glob, to avoid missing one.
-    file(GLOB CONFIG_FILES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/osvr_server_config*.json")
-
-    foreach(FN ${CONFIG_FILES})
-        list(APPEND FILE_OUTPUTS "${FN}")
-        add_custom_command(OUTPUT "${FN}"
-            COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/${FN}" "$<TARGET_FILE_DIR:osvr_server>"
-            MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/${FN}"
-            COMMENT "Copying JSON config file ${FN}"
-            VERBATIM)
-        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${FN}"
-            DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Server)
-    endforeach()
-
-    # Copy contents of dir for both build and install trees.
-    macro(osvr_copy_dir _dirname _glob _comment)
+    # Macro:
+    # Copy contents of dir for both build and install trees - directories of JSON configs and descriptors
+    macro(osvr_copy_dir _dirname _glob _builddir _installdir _comment)
         add_custom_command(OUTPUT "${_dirname}-stamp"
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:osvr_server>${_dirname}"
-            COMMENT "Making ${_comment} directory"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${_builddir}/${_dirname}"
             VERBATIM)
         set_source_files_properties("${_dirname}-stamp" PROPERTIES SYMBOLIC TRUE)
         # Grab all the files with a glob, to avoid missing one.
-        file(GLOB _files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}${_dirname}" "${CMAKE_CURRENT_SOURCE_DIR}${_dirname}/${_glob}")
+        file(GLOB _files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/${_dirname}" "${CMAKE_CURRENT_SOURCE_DIR}/${_dirname}/${_glob}")
 
         foreach(FN ${_files})
             list(APPEND FILE_OUTPUTS "${_dirname}/${FN}")
             add_custom_command(OUTPUT "${_dirname}/${FN}"
-                COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}${_dirname}/${FN}" "$<TARGET_FILE_DIR:osvr_server>${_dirname}/"
-                MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}${_dirname}/${FN}"
+                COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/${_dirname}/${FN}" "${_builddir}/${_dirname}/"
+                MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/${_dirname}/${FN}"
                 DEPENDS "${_dirname}-stamp"
                 COMMENT "Copying ${_comment} ${FN}"
                 VERBATIM)
-            install(FILES "${CMAKE_CURRENT_SOURCE_DIR}${_dirname}/${FN}"
-                DESTINATION ${CMAKE_INSTALL_BINDIR}${_dirname} COMPONENT Server)
+            install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${_dirname}/${FN}"
+                DESTINATION "${_installdir}/${_dirname}" COMPONENT Server)
         endforeach()
     endmacro()
 
-    osvr_copy_dir(/displays *.json "JSON display descriptor")
-    osvr_copy_dir(/sample-configs *.json "sample OSVR Server config")
-    osvr_copy_dir(/external-devices *.json "OSVR Server Configs for External VRPN devices")
-    osvr_copy_dir(/external-devices/device-descriptors *.json "Device Descriptors for External VRPN devices")
+    # Set up variables to begin the JSON copying
+    if(WIN32)
+        set(data_buildtree_dir "$<TARGET_FILE_DIR:osvr_server>")
+        set(DEFAULT_CONFIG_EXTRA_ARGS)
+    else()
+        set(data_buildtree_dir "${PROJECT_BINARY_DIR}/${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}")
+        # Here, we need to create the directory to copy to.
+        add_custom_command(OUTPUT "data_buildtree_dir-stamp"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${data_buildtree_dir}"
+            VERBATIM)
+        set_source_files_properties("data_buildtree_dir-stamp" PROPERTIES SYMBOLIC TRUE)
+        set(DEFAULT_CONFIG_EXTRA_ARGS DEPENDS "data_buildtree_dir-stamp")
+    endif()
+    set(data_installtree_dir ${SAMPLE_CONFIGS_DIR})
+    set(FILE_OUTPUTS)
+
+    # Copy/install the default config file from the current directory.
+    set(DEFAULT_CONFIG_FILE osvr_server_config.json)
+
+    list(APPEND FILE_OUTPUTS "${DEFAULT_CONFIG_FILE}")
+    add_custom_command(OUTPUT "${DEFAULT_CONFIG_FILE}"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/${DEFAULT_CONFIG_FILE}" "${data_buildtree_dir}"
+        MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/${DEFAULT_CONFIG_FILE}"
+        ${DEFAULT_CONFIG_EXTRA_ARGS}
+        COMMENT "Copying ${DEFAULT_CONFIG_FILE}"
+        VERBATIM)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${DEFAULT_CONFIG_FILE}"
+        DESTINATION "${data_installtree_dir}" COMPONENT Server)
+
+    # Copy/install subdirectories of JSON files
+    osvr_copy_dir(displays *.json ${data_buildtree_dir} ${SAMPLE_CONFIGS_DIR} "JSON display descriptor")
+    osvr_copy_dir(sample-configs *.json ${data_buildtree_dir} ${SAMPLE_CONFIGS_DIR} "sample OSVR Server config")
+    osvr_copy_dir(external-devices *.json ${data_buildtree_dir} ${SAMPLE_CONFIGS_DIR} "OSVR Server Configs for External VRPN devices")
+    osvr_copy_dir(external-devices/device-descriptors *.json ${data_buildtree_dir} ${SAMPLE_CONFIGS_DIR} "Device Descriptors for External VRPN devices")
 
     # Have to set them as symbolic because we can't use a generator expression in add_custom_command(OUTPUT
     set_source_files_properties(${FILE_OUTPUTS} PROPERTIES SYMBOLIC TRUE)

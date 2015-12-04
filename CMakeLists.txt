@@ -43,8 +43,8 @@ if(MSVC)
     option(BUILD_IN_PARALLEL "Should we use the MSVC /mp option to compile in parallel? Usually faster, but sometimes makes build errors harder to fix." ON)
 endif()
 
-set(OSVR_PLUGIN_IGNORE_SUFFIX ".manualload" CACHE STRING "Suffix for plugins that shouldn't be loaded automatically")
-mark_as_advanced(OSVR_PLUGIN_IGNORE_SUFFIX)
+# Shouldn't be changed without being fully aware of the consequences.
+set(OSVR_PLUGIN_IGNORE_SUFFIX ".manualload")
 
 # Figure out what to do with osvr_json_to_c
 if(CMAKE_CROSSCOMPILING OR ANDROID)
@@ -69,6 +69,9 @@ if(ANDROID)
     set(BUILD_USBSERIALENUM OFF)
     set(BUILD_OPENCV_CAMERA_PLUGIN OFF)
 endif()
+if(NOT BUILD_WITH_OPENCV)
+    set(BUILD_OPENCV_CAMERA_PLUGIN OFF)
+endif()
 
 set(BUILD_JOINTCLIENTKIT OFF)
 set(BUILD_ANALYSISPLUGINKIT OFF)
@@ -78,26 +81,38 @@ if(BUILD_CLIENT AND BUILD_SERVER)
 endif()
 
 set(BUILD_VIDEOTRACKER_PLUGIN OFF)
-# TODO enable this on non-Windows once it's not tied to the DirectShow driver.
-if(WIN32 AND BUILD_SERVER_PLUGINS)
-    # TODO fix this package so it finds things on MSYS2/MinGW64
-    # - the lib is in /mingw64/lib
-    # - qedit.h is in /mingw64/x86_64-w64-mingw32/include
-    find_package(DirectShow QUIET)
-    if(MINGW OR (DIRECTSHOW_QEDIT_INCLUDE_DIR AND DIRECTSHOW_STRMIIDS_LIBRARY))
-        # MinGW may include the header/lib in such a way that the find module
-        # can't find them
+if(BUILD_SERVER_PLUGINS AND BUILD_WITH_OPENCV)
+    if(WIN32)
+        # On Win32, for best experience, enforce the use of the DirectShow capture library.
+        # TODO fix this package so it finds things on MSYS2/MinGW64
+        # - the lib is in /mingw64/lib
+        # - qedit.h is in /mingw64/x86_64-w64-mingw32/include
+        find_package(DirectShow QUIET)
+        if(MINGW OR (DIRECTSHOW_QEDIT_INCLUDE_DIR AND DIRECTSHOW_STRMIIDS_LIBRARY))
+            # MinGW may include the header/lib in such a way that the find module
+            # can't find them
+            set(BUILD_VIDEOTRACKER_PLUGIN ON)
+        else()
+            message(STATUS "Skipping the video-based tracker plugin: Requires the 'Microsoft Windows SDK Update for Windows Vista' or older <http://www.microsoft.com/en-us/download/details.aspx?id=23719>")
+            if(NOT DIRECTSHOW_QEDIT_INCLUDE_DIR)
+                message(STATUS " - DIRECTSHOW_QEDIT_INCLUDE_DIR not found: Couldn't find a qedit.h file declaring ISampleGrabber.")
+            endif()
+            if(NOT DIRECTSHOW_STRMIIDS_LIBRARY)
+                message(STATUS " - DIRECTSHOW_STRMIIDS_LIBRARY not found: Couldn't find the strmiids.lib or libstrmiids.a library.")
+            endif()
+        endif()
+    elseif(NOT ANDROID)
+        # Non-Windows desktop platforms can use the experimental OpenCV capture.
+        # TODO get alternate capture libraries, like libuvc, that let us be choosier about our input.
         set(BUILD_VIDEOTRACKER_PLUGIN ON)
-    else()
-        message(STATUS "Skipping the video-based tracker plugin: Requires the 'Microsoft Windows SDK Update for Windows Vista' or older <http://www.microsoft.com/en-us/download/details.aspx?id=23719>")
-        if(NOT DIRECTSHOW_QEDIT_INCLUDE_DIR)
-            message(STATUS " - DIRECTSHOW_QEDIT_INCLUDE_DIR not found: Couldn't find a qedit.h file declaring ISampleGrabber.")
-        endif()
-        if(NOT DIRECTSHOW_STRMIIDS_LIBRARY)
-            message(STATUS " - DIRECTSHOW_STRMIIDS_LIBRARY not found: Couldn't find the strmiids.lib or libstrmiids.a library.")
-        endif()
     endif()
 endif()
+
+set(OSVR_COPY_LIBFUNC OFF)
+if(BUILD_SERVER AND (WIN32 OR ANDROID))
+    set(OSVR_COPY_LIBFUNC ON)
+endif()
+
 ###
 # CMake Modules
 ###
@@ -111,7 +126,13 @@ include(GNUInstallDirs)
 if(NOT CMAKE_INSTALL_DOCDIR)
 	set(CMAKE_INSTALL_DOCDIR ${CMAKE_INSTALL_DATAROOTDIR}/doc/${PROJECT_NAME})
 endif()
-set(EXTRA_SAMPLE_BINDIR ${CMAKE_INSTALL_DATAROOTDIR}/extra-sample-apps)
+set(EXTRA_SAMPLE_BINDIR ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}/extra-sample-apps)
+if(WIN32)
+    # On Windows, install sample configs, etc. to a subdirectory of bin.
+    set(SAMPLE_CONFIGS_DIR "${CMAKE_INSTALL_BINDIR}")
+else()
+    set(SAMPLE_CONFIGS_DIR "${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}")
+endif()
 
 # Shared modules from rpavlik/cmake-modules
 
@@ -162,20 +183,25 @@ endif()
 if(BUILD_SERVER)
     find_package(libfunctionality REQUIRED)
 endif()
-find_package(OpenCV REQUIRED)
-if(WIN32)
-    set(OSVR_COPY_OPENCV ON)
-else()
-    set(OSVR_COPY_OPENCV OFF)
-endif()
-if(ANDROID)
-    include(OpenCVAndroid)
-endif()
-# Include dir specifically required by 3.0 and up, but missing from config.
-if(NOT OpenCV_VERSION VERSION_LESS 3.0.0)
-    list(REMOVE_DUPLICATES OpenCV_INCLUDE_DIRS)
-    set_target_properties(opencv_core PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${OpenCV_INCLUDE_DIRS}")
+
+set(OSVR_COPY_OPENCV OFF)
+if(BUILD_WITH_OPENCV)
+    find_package(OpenCV)
+    if(NOT OpenCV_FOUND)
+        message(FATAL_ERROR "BUILD_WITH_OPENCV is enabled, but OpenCV was not found! Either help CMake find OpenCV or disable BUILD_WITH_OPENCV.")
+    endif()
+    if(WIN32)
+        set(OSVR_COPY_OPENCV ON)
+    endif()
+    if(ANDROID)
+        include(OpenCVAndroid)
+    endif()
+    # Include dir specifically required by 3.0 and up, but missing from config.
+    if(NOT OpenCV_VERSION VERSION_LESS 3.0.0)
+        list(REMOVE_DUPLICATES OpenCV_INCLUDE_DIRS)
+        set_target_properties(opencv_core PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${OpenCV_INCLUDE_DIRS}")
+    endif()
 endif()
 
 find_package(Threads REQUIRED)
@@ -189,42 +215,46 @@ endif()
 include(CompilerFeatures)
 
 set(OPENCV_MODULES_USED)
-if(NOT OpenCV_VERSION_MAJOR LESS 3)
-    list(APPEND OPENCV_MODULES_USED opencv_hal)
-endif()
-list(APPEND OPENCV_MODULES_USED opencv_core)
 
-set(OPENCV_CORE_MODULES ${OPENCV_MODULES_USED})
-
-# Extra OpenCV components.
-# We set this up here so that if we need to copy DLLs, we can do it in the main
-# library builds where it's easier to get the right directory on Windows in a build tree.
-if(BUILD_OPENCV_CAMERA_PLUGIN)
-    if(OpenCV_VERSION_MAJOR LESS 3)
-        set(OPENCV_CAMERA_EXTRA_LIBS opencv_highgui)
-    else()
-        set(OPENCV_CAMERA_EXTRA_LIBS opencv_videoio)
+if(BUILD_WITH_OPENCV)
+    if(NOT OpenCV_VERSION_MAJOR LESS 3)
+        list(APPEND OPENCV_MODULES_USED opencv_hal)
     endif()
-    list(APPEND OPENCV_MODULES_USED ${OPENCV_CAMERA_EXTRA_LIBS})
-endif()
+    list(APPEND OPENCV_MODULES_USED opencv_core)
 
-if(BUILD_VIDEOTRACKER_PLUGIN)
-    set(VIDEOTRACKER_EXTRA_LIBS
-        opencv_imgproc
-        opencv_features2d
-        opencv_calib3d
-        opencv_highgui
-        opencv_imgproc
-        opencv_flann)
-
-    if(WIN32 AND NOT OpenCV_VERSION_MAJOR LESS 3)
-        # for the tracker camera viewer to be able to save a capture.
-        list(APPEND VIDEOTRACKER_EXTRA_LIBS opencv_imgcodecs)
+    # Extra OpenCV components.
+    # We set this up here so that if we need to copy DLLs, we can do it in the main
+    # library builds where it's easier to get the right directory on Windows in a build tree.
+    if(BUILD_OPENCV_CAMERA_PLUGIN)
+        if(OpenCV_VERSION_MAJOR LESS 3)
+            set(OPENCV_CAMERA_EXTRA_LIBS opencv_highgui)
+        else()
+            set(OPENCV_CAMERA_EXTRA_LIBS opencv_videoio)
+        endif()
+        list(APPEND OPENCV_MODULES_USED ${OPENCV_CAMERA_EXTRA_LIBS})
     endif()
-    list(APPEND OPENCV_MODULES_USED ${VIDEOTRACKER_EXTRA_LIBS})
+
+    if(BUILD_VIDEOTRACKER_PLUGIN)
+        set(VIDEOTRACKER_EXTRA_LIBS
+            opencv_imgproc
+            opencv_features2d
+            opencv_calib3d
+            opencv_highgui
+            opencv_imgproc
+            opencv_flann)
+
+        if(WIN32 AND NOT OpenCV_VERSION_MAJOR LESS 3)
+            # for the tracker camera viewer to be able to save a capture.
+            list(APPEND VIDEOTRACKER_EXTRA_LIBS opencv_imgcodecs)
+        endif()
+        list(APPEND OPENCV_MODULES_USED ${VIDEOTRACKER_EXTRA_LIBS})
+    endif()
+
 endif()
 
-list(REMOVE_DUPLICATES OPENCV_MODULES_USED)
+if(OPENCV_MODULES_USED)
+    list(REMOVE_DUPLICATES OPENCV_MODULES_USED)
+endif()
 
 ###
 # Figure out what Boost compiled libraries we need.
@@ -260,11 +290,16 @@ include(BoostTargets)
 ###
 # Set up shared destination directories to avoid Windows hassle with DLL search paths.
 if(WIN32)
-	set(OSVR_SHARED_LIBRARY_DIR "${CMAKE_INSTALL_BINDIR}")
+    set(OSVR_SHARED_LIBRARY_DIR "${CMAKE_INSTALL_BINDIR}")
+    set(OSVR_PLUGINS_UNDER_BINDIR ON)
 else()
-	set(OSVR_SHARED_LIBRARY_DIR "${CMAKE_INSTALL_LIBDIR}")
+    set(OSVR_SHARED_LIBRARY_DIR "${CMAKE_INSTALL_LIBDIR}")
+    set(OSVR_PLUGINS_UNDER_BINDIR OFF)
 endif()
-set(OSVR_PLUGIN_DIR "${OSVR_SHARED_LIBRARY_DIR}/osvr-plugins-${OSVR_PLUGINKIT_ABI_VERSION}")
+set(OSVR_PLUGIN_SUBDIR "osvr-plugins-${OSVR_PLUGINKIT_ABI_VERSION}")
+set(OSVR_PLUGIN_BASEDIR "${OSVR_SHARED_LIBRARY_DIR}")
+set(OSVR_PLUGIN_DIR "${OSVR_SHARED_LIBRARY_DIR}/${OSVR_PLUGIN_SUBDIR}")
+
 if(NOT CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
 	set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}")
 endif()
@@ -301,9 +336,15 @@ if(NOT WIN32) # Have not set this up for Windows yet
     list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
     if("${isSystemDir}" STREQUAL "-1")
         if(APPLE)
+            # Standard RPATH
             set(CMAKE_INSTALL_RPATH "@loader_path/../${CMAKE_INSTALL_LIBDIR}")
+            # Extra install RPATH for those binaries installed in the EXTRA_SAMPLE_BINDIR
+            set(EXTRABINARIES_INSTALL_RPATH "@loader_path/../../../${CMAKE_INSTALL_LIBDIR}")
         else()
+            # Standard RPATH
             set(CMAKE_INSTALL_RPATH "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+            # Extra install RPATH for those binaries installed in the EXTRA_SAMPLE_BINDIR
+            set(EXTRABINARIES_INSTALL_RPATH "\$ORIGIN/../../../${CMAKE_INSTALL_LIBDIR}")
         endif()
     else() #Use default rpath if libs installed in a system dir
         set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -364,6 +405,8 @@ install(DIRECTORY examples/
 ###
 install(FILES
     json-schemas/device_descriptor_schema.json
+    json-schemas/display_descriptor_schema_v1.json
+    json-schemas/osvr_server_config_schema.json
     json-schemas/README.md
     DESTINATION "${CMAKE_INSTALL_DOCDIR}/json-schemas"
     COMPONENT Doc)
@@ -384,6 +427,7 @@ endif()
 find_package(Markdown)
 
 set(README_MARKDOWN
+    BINARY_README.md
     CONTRIBUTING.md
     README.md
     NEWS.md)
@@ -458,9 +502,19 @@ generate_compatibility_version_file(
     COMPATIBILITY AnyNewerVersion
     CXX_ABI)
 
-export(EXPORT osvrTargets
+# Be sure to export the json-to-c tool if we have built it.
+if(TARGET osvr_json_to_c)
+    list(APPEND OSVR_BUILDTREE_TARGETS osvr_json_to_c)
+endif()
+
+# Export the targets we want in the build tree.
+# TODO exporting osvr_cxx11_flags means the build tree (only) is fairly compiler-specific
+export(TARGETS
+    ${OSVR_BUILDTREE_TARGETS}
+    osvr_cxx11_flags
     FILE "${CMAKE_CURRENT_BINARY_DIR}/osvrTargets.cmake"
-    NAMESPACE osvr::)
+    NAMESPACE osvr::
+)
 
 # Register the current build dir as a package search location
 export(PACKAGE osvr)

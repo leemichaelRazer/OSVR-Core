@@ -1,9 +1,11 @@
+add_subdirectory(TypePack)
 add_subdirectory(Util)
 add_subdirectory(Routing)
 add_subdirectory(Common)
 
 if(BUILD_SERVER)
     add_subdirectory(Connection)
+    add_subdirectory(Kalman)
 endif()
 
 if(BUILD_CLIENT)

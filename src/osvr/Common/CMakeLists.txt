@@ -73,6 +73,7 @@ set(API
     "${HEADER_LOCATION}/JSONEigen.h"
     "${HEADER_LOCATION}/JSONHelpers.h"
     "${HEADER_LOCATION}/JSONSerializationTags.h"
+    "${HEADER_LOCATION}/JSONTimestamp.h"
     "${HEADER_LOCATION}/JSONTransformVisitor.h"
     "${HEADER_LOCATION}/Location2DComponent.h"
     "${HEADER_LOCATION}/LocomotionComponent.h"
@@ -100,7 +101,6 @@ set(API
     "${HEADER_LOCATION}/RawSenderType.h"
     "${HEADER_LOCATION}/RegisteredStringMap.h"
     "${HEADER_LOCATION}/ReportFromCallback.h"
-    "${HEADER_LOCATION}/ReportMap.h"
     "${HEADER_LOCATION}/ReportState.h"
     "${HEADER_LOCATION}/ReportStateTraits.h"
     "${HEADER_LOCATION}/ReportTraits.h"
@@ -118,7 +118,9 @@ set(API
     "${HEADER_LOCATION}/SystemComponent.h"
     "${HEADER_LOCATION}/SystemComponent_fwd.h"
     "${HEADER_LOCATION}/Tracing.h"
+    "${HEADER_LOCATION}/TrackerSensorInfo.h"
     "${HEADER_LOCATION}/Transform.h"
+    "${HEADER_LOCATION}/Transform_fwd.h"
     "${CMAKE_CURRENT_BINARY_DIR}/ConfigByteSwapping.h"
     "${CMAKE_CURRENT_BINARY_DIR}/TracingConfig.h")
 
@@ -200,11 +202,14 @@ target_link_libraries(${LIBNAME_FULL}
     osvrUtilCpp
     PRIVATE
     jsoncpp_lib
-    opencv_core
     vendored-vrpn
     eigen-headers
     osvr_cxx11_flags
     ${OSVR_CODECVT_LIBRARIES})
+
+# Target-level dependency: make Util build first, because the Util build contains
+# the generated X-Macro header ReportTypesX that is included in ReportTraits.h
+add_dependencies(${LIBNAME_FULL} osvrUtil)
 
 if(OSVR_COMMON_TRACING_ETW)
     target_link_libraries(${LIBNAME_FULL} PRIVATE ETWProviders)
@@ -219,13 +224,11 @@ if(OSVR_COMMON_TRACING_ETW)
         DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 endif()
 
-osvr_delayload_opencv(${LIBNAME_FULL} ${OPENCV_CORE_MODULES})
-
 ###
 # Grab DLLs please.
 ###
-if(OSVR_COPY_OPENCV)
-    # This copies the DLLs used by the core, as well as by any enabled in-tree plugins.
+if(BUILD_WITH_OPENCV AND OSVR_COPY_OPENCV)
+    # This copies the DLLs used by any enabled in-tree plugins and examples
     foreach(opencvlib ${OPENCV_MODULES_USED})
         osvr_copy_dep(${LIBNAME_FULL} ${opencvlib})
     endforeach()

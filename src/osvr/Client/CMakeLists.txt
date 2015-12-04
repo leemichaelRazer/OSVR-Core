@@ -44,9 +44,7 @@ set(SOURCE
     PureClientContext.h
     RemoteHandler.cpp
     RemoteHandlerFactory.cpp
-    RenderManagerConfig.cpp
-    RouterPredicates.h
-    RouterTransforms.h
+    RemoteHandlerInternals.h
     TrackerRemoteFactory.cpp
     TrackerRemoteFactory.h
     Viewer.cpp
