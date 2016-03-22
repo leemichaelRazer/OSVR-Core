@@ -75,7 +75,8 @@ namespace server {
             err << "\n"
                 << "Could not open config file!" << endl;
             err << "Searched in the current directory; file may be "
-                   "misspelled, missing, or in a different directory." << endl;
+                   "misspelled, missing, or in a different directory."
+                << endl;
             return nullptr;
         }
 
@@ -86,7 +87,8 @@ namespace server {
             ret = srvConfig.constructServer();
         } catch (std::exception &e) {
             err << "Caught exception constructing server from JSON config "
-                   "file: " << e.what() << endl;
+                   "file: "
+                << e.what() << endl;
             return nullptr;
         }
 
@@ -99,14 +101,14 @@ namespace server {
             out << "Loading plugins..." << endl;
             srvConfig.loadPlugins();
             if (!srvConfig.getSuccessfulPlugins().empty()) {
-                out << "Successful plugins:" << endl;
+                out << "Successfully loaded the following plugins:" << endl;
                 for (auto const &plugin : srvConfig.getSuccessfulPlugins()) {
                     out << " - " << plugin << endl;
                 }
                 out << "\n";
             }
             if (!srvConfig.getFailedPlugins().empty()) {
-                out << "Failed plugins:" << endl;
+                out << "Failed to load the following plugins:" << endl;
                 for (auto const &pluginError : srvConfig.getFailedPlugins()) {
                     out << " - " << pluginError.first << "\t"
                         << pluginError.second << endl;
@@ -152,19 +154,21 @@ namespace server {
         }
 
         if (srvConfig.processDisplay()) {
-            out << "Display descriptor found and parsed from config file"
+            out << "Display descriptor found and parsed from config file."
                 << endl;
         } else {
-            out << "No valid 'display' object found in config file - server "
-                   "may use the OSVR HDK as a default." << endl;
+            out << "Using OSVR HDK for display configuration. "
+                   "Did not find an alternate valid 'display' object in config "
+                   "file."
+                << endl;
         }
 
         if (srvConfig.processRenderManagerParameters()) {
-            out << "RenderManager config found and parsed from the config file"
+            out << "RenderManager config found and parsed from the config file."
                 << endl;
         }
 
-        out << "Triggering a hardware detection..." << endl;
+        out << "Triggering automatic hardware detection..." << endl;
         ret->triggerHardwareDetect();
 
         return ret;

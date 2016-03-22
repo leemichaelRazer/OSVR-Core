@@ -41,13 +41,11 @@ namespace kalman {
     namespace pose_externalized_rotation {
         using Dimension = types::DimensionConstant<12>;
         using StateVector = types::DimVector<Dimension>;
-        using StateVectorBlock3 =
-            StateVector::FixedSegmentReturnType<3>::Type;
+        using StateVectorBlock3 = StateVector::FixedSegmentReturnType<3>::Type;
         using ConstStateVectorBlock3 =
             StateVector::ConstFixedSegmentReturnType<3>::Type;
 
-        using StateVectorBlock6 =
-            StateVector::FixedSegmentReturnType<6>::Type;
+        using StateVectorBlock6 = StateVector::FixedSegmentReturnType<6>::Type;
         using StateSquareMatrix = types::DimSquareMatrix<Dimension>;
 
         /// @name Accessors to blocks in the state vector.
@@ -97,19 +95,39 @@ namespace kalman {
 
             return A;
         }
+        /// Function used to compute the coefficient m in v_new = m * v_old.
+        /// The damping value is for exponential decay.
         inline double computeAttenuation(double damping, double dt) {
             return std::pow(damping, dt);
         }
+
+        /// Returns the state transition matrix for a constant velocity with a
+        /// single damping parameter (not for direct use in computing state
+        /// transition, because it is very sparse, but in computing other
+        /// values)
         inline StateSquareMatrix
         stateTransitionMatrixWithVelocityDamping(double dt, double damping) {
-
             // eq. 4.5 in Welch 1996
-
             auto A = stateTransitionMatrix(dt);
-            auto attenuation = computeAttenuation(damping, dt);
-            A.bottomRightCorner<6, 6>() *= attenuation;
+            A.bottomRightCorner<6, 6>() *= computeAttenuation(damping, dt);
             return A;
         }
+
+        /// Returns the state transition matrix for a constant velocity with
+        /// separate damping paramters for linear and angular velocity (not for
+        /// direct use in computing state transition, because it is very sparse,
+        /// but in computing other values)
+        inline StateSquareMatrix
+        stateTransitionMatrixWithSeparateVelocityDamping(double dt,
+                                                         double posDamping,
+                                                         double oriDamping) {
+            // eq. 4.5 in Welch 1996
+            auto A = stateTransitionMatrix(dt);
+            A.block<3, 3>(6, 6) *= computeAttenuation(posDamping, dt);
+            A.bottomRightCorner<3, 3>() *= computeAttenuation(oriDamping, dt);
+            return A;
+        }
+
         /// Computes A(deltaT)xhat(t-deltaT)
         inline StateVector applyVelocity(StateVector const &state, double dt) {
             // eq. 4.5 in Welch 1996
@@ -123,10 +141,19 @@ namespace kalman {
             return ret;
         }
 
+        /// Dampen all 6 components of velocity by a single factor.
         inline void dampenVelocities(StateVector &state, double damping,
                                      double dt) {
             auto attenuation = computeAttenuation(damping, dt);
             velocities(state) *= attenuation;
+        }
+
+        /// Separately dampen the linear and angular velocities
+        inline void separatelyDampenVelocities(StateVector &state,
+                                               double posDamping,
+                                               double oriDamping, double dt) {
+            velocity(state) *= computeAttenuation(posDamping, dt);
+            angularVelocity(state) *= computeAttenuation(oriDamping, dt);
         }
 
         inline Eigen::Quaterniond
@@ -141,9 +168,8 @@ namespace kalman {
             /// Default constructor
             State()
                 : m_state(StateVector::Zero()),
-                  m_errorCovariance(
-                      StateSquareMatrix::
-                          Identity() /** @todo almost certainly wrong */),
+                  m_errorCovariance(StateSquareMatrix::Identity() *
+                                    10 /** @todo almost certainly wrong */),
                   m_orientation(Eigen::Quaterniond::Identity()) {}
             /// set xhat
             void setStateVector(StateVector const &state) { m_state = state; }
@@ -157,37 +183,52 @@ namespace kalman {
             StateSquareMatrix const &errorCovariance() const {
                 return m_errorCovariance;
             }
+            StateSquareMatrix &errorCovariance() { return m_errorCovariance; }
 
             /// Intended for startup use.
             void setQuaternion(Eigen::Quaterniond const &quaternion) {
-                m_orientation = quaternion;
+                m_orientation = quaternion.normalized();
             }
 
             void postCorrect() { externalizeRotation(); }
 
             void externalizeRotation() {
-                m_orientation = getCombinedQuaternion();
-                incrementalOrientation(m_state) = Eigen::Vector3d::Zero();
+                setQuaternion(getCombinedQuaternion());
+                incrementalOrientation() = Eigen::Vector3d::Zero();
             }
 
-            StateVectorBlock3 getPosition() { return position(m_state); }
-
-            ConstStateVectorBlock3 getPosition() const {
-                return position(m_state);
+            StateVectorBlock3 position() {
+                return pose_externalized_rotation::position(m_state);
             }
 
-            StateVectorBlock3 getVelocity() { return velocity(m_state); }
-
-            ConstStateVectorBlock3 getVelocity() const {
-                return velocity(m_state);
+            ConstStateVectorBlock3 position() const {
+                return pose_externalized_rotation::position(m_state);
             }
 
-            StateVectorBlock3 getAngularVelocity() {
-                return angularVelocity(m_state);
+            StateVectorBlock3 incrementalOrientation() {
+                return pose_externalized_rotation::incrementalOrientation(
+                    m_state);
             }
 
-            ConstStateVectorBlock3 getAngularVelocity() const {
-                return angularVelocity(m_state);
+            ConstStateVectorBlock3 incrementalOrientation() const {
+                return pose_externalized_rotation::incrementalOrientation(
+                    m_state);
+            }
+
+            StateVectorBlock3 velocity() {
+                return pose_externalized_rotation::velocity(m_state);
+            }
+
+            ConstStateVectorBlock3 velocity() const {
+                return pose_externalized_rotation::velocity(m_state);
+            }
+
+            StateVectorBlock3 angularVelocity() {
+                return pose_externalized_rotation::angularVelocity(m_state);
+            }
+
+            ConstStateVectorBlock3 angularVelocity() const {
+                return pose_externalized_rotation::angularVelocity(m_state);
             }
 
             Eigen::Quaterniond const &getQuaternion() const {
@@ -196,8 +237,17 @@ namespace kalman {
 
             Eigen::Quaterniond getCombinedQuaternion() const {
                 /// @todo is just quat multiplication OK here? Order right?
-                return (incrementalOrientationToQuat(m_state) * m_orientation)
-                    .normalized();
+                return incrementalOrientationToQuat(m_state).normalized() *
+                       m_orientation;
+            }
+
+            /// Get the position and quaternion combined into a single isometry
+            /// (transformation)
+            Eigen::Isometry3d getIsometry() const {
+                Eigen::Isometry3d ret;
+                ret.fromPositionOrientationScale(position(), getQuaternion(),
+                                                 Eigen::Vector3d::Constant(1));
+                return ret;
             }
 
           private:

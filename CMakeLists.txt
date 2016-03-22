@@ -190,6 +190,12 @@ if(BUILD_WITH_OPENCV)
     if(NOT OpenCV_FOUND)
         message(FATAL_ERROR "BUILD_WITH_OPENCV is enabled, but OpenCV was not found! Either help CMake find OpenCV or disable BUILD_WITH_OPENCV.")
     endif()
+    if(OpenCV_VERSION VERSION_LESS 2.4)
+        # At least one 2.3 version (used in Precise) is missing a header that
+        # breaks their Eigen compatibility header. This seemed like the easiest
+        # fix.
+        set(BUILD_OPENCV_CAMERA_PLUGIN OFF)
+    endif()
     if(WIN32)
         set(OSVR_COPY_OPENCV ON)
     endif()
@@ -206,18 +212,16 @@ endif()
 
 find_package(Threads REQUIRED)
 
-find_package(jsoncpp REQUIRED)
-if(TARGET jsoncpp_lib_static AND NOT TARGET jsoncpp_lib)
-    add_library(jsoncpp_lib INTERFACE)
-    target_link_libraries(jsoncpp_lib INTERFACE jsoncpp_lib_static)
-endif()
+# This find module wraps both the cmake config file-having and config-file-lacking builds.
+find_package(JsonCpp REQUIRED)
 
 include(CompilerFeatures)
 
 set(OPENCV_MODULES_USED)
 
 if(BUILD_WITH_OPENCV)
-    if(NOT OpenCV_VERSION_MAJOR LESS 3)
+    if(TARGET opencv_hal)
+        # Only exists for versions around 3.0
         list(APPEND OPENCV_MODULES_USED opencv_hal)
     endif()
     list(APPEND OPENCV_MODULES_USED opencv_core)
@@ -241,7 +245,7 @@ if(BUILD_WITH_OPENCV)
             opencv_calib3d
             opencv_highgui
             opencv_imgproc
-            opencv_flann)
+            opencv_flann) # flann is a transitive dependency
 
         if(WIN32 AND NOT OpenCV_VERSION_MAJOR LESS 3)
             # for the tracker camera viewer to be able to save a capture.

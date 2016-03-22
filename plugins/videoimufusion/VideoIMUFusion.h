@@ -72,11 +72,10 @@ class VideoIMUFusion {
     bool running() const { return m_state == State::Running; }
 
     /// Returns the latest (fusion result, if available) pose.
-    OSVR_PoseState const &getLatestPose() const {
-        return m_lastPose;
-    }
+    OSVR_PoseState const &getLatestPose() const { return m_lastPose; }
 
-    /// Returns the timestamp associated with the latest (fusion result, if available) pose.
+    /// Returns the timestamp associated with the latest (fusion result, if
+    /// available) pose.
     osvr::util::time::TimeValue const &getLatestTime() const {
         return m_lastTime;
     }
@@ -103,7 +102,7 @@ class VideoIMUFusion {
 
   private:
     void enterCameraPoseAcquisitionState();
-    void enterRunningState(Eigen::Isometry3d const &cTr,
+    void enterRunningState(Eigen::Isometry3d const &rTc,
                            const OSVR_TimeValue &timestamp,
                            const OSVR_PoseReport &report,
                            const OSVR_OrientationState &orientation);
@@ -120,13 +119,14 @@ class VideoIMUFusion {
     std::unique_ptr<StartupData> m_startupData;
     class RunningData;
     std::unique_ptr<RunningData> m_runningData;
-    Eigen::Isometry3d m_cTr;
+    Eigen::Isometry3d m_rTc;
 
     OSVR_PoseState m_camera;
     OSVR_PoseState m_reorientedVideo;
     OSVR_PoseState m_lastPose;
     osvr::util::time::TimeValue m_lastTime;
     VideoIMUFusionParams m_params;
+    Eigen::Isometry3d m_roomCalib;
 };
 
 #endif // INCLUDED_VideoIMUFusion_h_GUID_85338EA5_58E6_4787_16D2_EC53201EFE9F

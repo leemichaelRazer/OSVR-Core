@@ -30,6 +30,11 @@
 #include "ImageSourceFactories.h"
 #include <osvr/PluginKit/PluginKit.h>
 #include <osvr/PluginKit/TrackerInterfaceC.h>
+#include <osvr/PluginKit/AnalogInterfaceC.h>
+#include "HDKData.h"
+#include "SetupSensors.h"
+
+#include "ConfigurationParser.h"
 
 // Generated JSON header file
 #include "com_osvr_VideoBasedHMDTracker_json.h"
@@ -46,6 +51,7 @@
 
 // Standard includes
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <memory>
@@ -62,20 +68,30 @@
 // Anonymous namespace to avoid symbol collision
 namespace {
 
+static const auto DEBUGGABLE_BEACONS = 34;
+static const auto DATAPOINTS_PER_BEACON = 5;
+
 class VideoBasedHMDTracker : boost::noncopyable {
   public:
     VideoBasedHMDTracker(OSVR_PluginRegContext ctx,
                          osvr::vbtracker::ImageSourcePtr &&source,
-                         int devNumber = 0, bool showDebug = false)
-        : m_source(std::move(source)), m_vbtracker(showDebug) {
-        // Set the number of threads for OpenCV to use.
-        cv::setNumThreads(1);
+                         int devNumber = 0,
+                         osvr::vbtracker::ConfigParams const &params =
+                             osvr::vbtracker::ConfigParams{})
+        : m_source(std::move(source)), m_vbtracker(params), m_params(params) {
+        if (params.numThreads > 0) {
+            // Set the number of threads for OpenCV to use.
+            cv::setNumThreads(params.numThreads);
+        }
 
         /// Create the initialization options
         OSVR_DeviceInitOptions opts = osvrDeviceCreateInitOptions(ctx);
 
         // Configure the tracker interface.
         osvrDeviceTrackerConfigure(opts, &m_tracker);
+
+        osvrDeviceAnalogConfigure(opts, &m_analog,
+                                  DEBUGGABLE_BEACONS * DATAPOINTS_PER_BEACON);
 
         /// Come up with a device name
         std::ostringstream os;
@@ -93,30 +109,16 @@ class VideoBasedHMDTracker : boost::noncopyable {
 
     OSVR_ReturnCode update();
 
-    /// Should be called immediately after construction for specifying the
-    /// particulars of tracking.
-    void addSensor(osvr::vbtracker::LedIdentifierPtr &&identifier,
-                   osvr::vbtracker::CameraParameters const &params,
-                   osvr::vbtracker::Point3Vector const &locations,
-                   size_t requiredInliers = 4, size_t permittedOutliers = 2) {
-        m_vbtracker.addSensor(std::move(identifier), params.cameraMatrix,
-                              params.distortionParameters, locations,
-                              requiredInliers, permittedOutliers);
-    }
-    void addSensor(osvr::vbtracker::LedIdentifierPtr &&identifier,
-                   osvr::vbtracker::CameraParameters const &params,
-                   osvr::vbtracker::Point3Vector const &locations,
-                   std::vector<double> const &variance,
-                   size_t requiredInliers = 4, size_t permittedOutliers = 2) {
-        m_vbtracker.addSensor(std::move(identifier), params.cameraMatrix,
-                              params.distortionParameters, locations, variance,
-                              requiredInliers, permittedOutliers);
-    }
+    /// Provides access to the underlying video-based tracker object to add
+    /// sensors.
+    osvr::vbtracker::VideoBasedTracker &vbtracker() { return m_vbtracker; }
 
   private:
     osvr::pluginkit::DeviceToken m_dev;
     OSVR_TrackerDeviceInterface m_tracker;
+    OSVR_AnalogDeviceInterface m_analog;
     osvr::vbtracker::ImageSourcePtr m_source;
+    osvr::vbtracker::ConfigParams const m_params;
 #ifdef VBHMD_SAVE_IMAGES
     int m_imageNum = 1;
 #endif
@@ -160,7 +162,7 @@ inline OSVR_ReturnCode VideoBasedHMDTracker::update() {
     fileName << VBHMD_SAVE_IMAGES << "/";
     fileName << std::setfill('0') << std::setw(4) << m_imageNum++;
     fileName << ".tif";
-    if (!cv::imwrite(fileName.str().c_str(), m_frame)) {
+    if (!cv::imwrite(fileName.str(), m_frame)) {
         std::cerr << "Could not write image to " << fileName.str() << std::endl;
     }
 
@@ -184,7 +186,7 @@ inline OSVR_ReturnCode VideoBasedHMDTracker::update() {
         last = now;
     }
 #endif
-
+    bool shouldSendDebug = false;
     m_vbtracker.processImage(
         m_frame, m_imageGray, timestamp,
         [&](OSVR_ChannelCount sensor, OSVR_Pose3 const &pose) {
@@ -194,7 +196,28 @@ inline OSVR_ReturnCode VideoBasedHMDTracker::update() {
             // received the image from the camera.
             osvrDeviceTrackerSendPoseTimestamped(m_dev, m_tracker, &pose,
                                                  sensor, &timestamp);
+            if (sensor == 0) {
+                shouldSendDebug = true;
+            }
         });
+    if (shouldSendDebug && m_params.streamBeaconDebugInfo) {
+        double data[DEBUGGABLE_BEACONS * DATAPOINTS_PER_BEACON];
+        auto &debug = m_vbtracker.getFirstEstimator().getBeaconDebugData();
+        auto now = osvr::util::time::getNow();
+        auto n = std::min(size_t(DEBUGGABLE_BEACONS), debug.size());
+        for (std::size_t i = 0; i < n; ++i) {
+            double *buf = &data[i];
+            auto j = i * DATAPOINTS_PER_BEACON;
+            // yes, using postincrement since we want the previous value
+            // returned. Borderline "too clever" but it's debug code.
+            data[j] = debug[i].variance;
+            data[j + 1] = debug[i].measurement.x;
+            data[j + 2] = debug[i].measurement.y;
+            data[j + 3] = debug[i].residual.x;
+            data[j + 4] = debug[i].residual.y;
+        }
+        osvrDeviceAnalogSetValuesTimestamped(m_dev, m_analog, data, n, &now);
+    }
 
     return OSVR_RETURN_SUCCESS;
 }
@@ -204,9 +227,11 @@ class HardwareDetection {
     using CameraFactoryType = std::function<osvr::vbtracker::ImageSourcePtr()>;
     using SensorSetupType = std::function<void(VideoBasedHMDTracker &)>;
     HardwareDetection(CameraFactoryType camFactory, SensorSetupType setup,
-                      int cameraID = 0, bool showDebug = false)
+                      int cameraID = 0,
+                      osvr::vbtracker::ConfigParams const &params =
+                          osvr::vbtracker::ConfigParams{})
         : m_found(false), m_cameraFactory(camFactory), m_sensorSetup(setup),
-          m_cameraID(cameraID), m_showDebug(showDebug) {}
+          m_cameraID(cameraID), m_params(params) {}
 
     OSVR_ReturnCode operator()(OSVR_PluginRegContext ctx) {
         if (m_found) {
@@ -214,15 +239,39 @@ class HardwareDetection {
         }
         auto src = m_cameraFactory();
         if (!src || !src->ok()) {
+            if (!m_reportedNoCamera) {
+                m_reportedNoCamera = true;
+                std::cout
+                    << "\nVideo-based tracker: Could not open the tracking "
+                       "camera. If you intend to use it, make sure that "
+                       "all cables to it are plugged in firmly.\n";
+
+#ifdef _WIN32
+                /// @todo this is a strange quirk of the video capture backend,
+                /// as well as others like it, including Microsoft's own AMCap
+                /// You get a "can't start the filter graph" if you have, e.g.,
+                /// Skype or a webcam-using page in Chrome accessing any camera
+                /// on your system when you try to start the tracker. Once you
+                /// get it started, then you can use those things just fine.
+                std::cout << "Video-based tracker: Windows users may need to "
+                             "exit other camera-using applications or "
+                             "activities until after the tracking camera is "
+                             "turned on by this plugin. (This is the most "
+                             "common cause of messages regarding the 'filter "
+                             "graph')\n";
+#endif
+                std::cout << std::endl;
+            }
             return OSVR_RETURN_FAILURE;
         }
+        std::cout << "Video-based tracker: Camera turned on!" << std::endl;
         m_found = true;
 
         /// Create our device object, passing the context and moving the camera.
         std::cout << "Opening camera " << m_cameraID << std::endl;
         auto newTracker = osvr::pluginkit::registerObjectForDeletion(
             ctx, new VideoBasedHMDTracker(ctx, std::move(src), m_cameraID,
-                                          m_showDebug));
+                                          m_params));
         m_sensorSetup(*newTracker);
         return OSVR_RETURN_SUCCESS;
     }
@@ -231,12 +280,13 @@ class HardwareDetection {
     /// @brief Have we found our device yet? (this limits the plugin to one
     /// instance, so that only one tracker will use this camera.)
     bool m_found = false;
+    bool m_reportedNoCamera = false;
 
     CameraFactoryType m_cameraFactory;
     SensorSetupType m_sensorSetup;
 
-    int m_cameraID;   //< Which OpenCV camera should we open?
-    bool m_showDebug; //< Show windows with video to help debug?
+    int m_cameraID; //< Which OpenCV camera should we open?
+    osvr::vbtracker::ConfigParams const m_params;
 };
 
 class ConfiguredDeviceConstructor {
@@ -258,7 +308,16 @@ class ConfiguredDeviceConstructor {
 
         // Using `get` here instead of `[]` lets us provide a default value.
         int cameraID = root.get("cameraID", 0).asInt();
-        bool showDebug = root.get("showDebug", false).asBool();
+
+        // This is in a separate function/header foro sharing and for clarity.
+        auto config = osvr::vbtracker::parseConfigParams(root);
+
+        /// Functions to indicate which beacons should be considered "fixed" -
+        /// not autocalibrated.
+        auto backPanelFixedBeacon = [](int) { return true; };
+        auto frontPanelFixedBeacon = [](int id) {
+            return (id == 16) || (id == 17) || (id == 19) || (id == 20);
+        };
 
         /// @todo get this (and the path) from the config file
         bool fakeImages = false;
@@ -272,16 +331,20 @@ class ConfiguredDeviceConstructor {
             }
             auto newTracker = osvr::pluginkit::registerObjectForDeletion(
                 ctx, new VideoBasedHMDTracker(ctx, std::move(src), cameraID,
-                                              showDebug));
+                                              config));
             auto camParams = osvr::vbtracker::getSimulatedHDKCameraParameters();
-            newTracker->addSensor(
+            newTracker->vbtracker().addSensor(
                 osvr::vbtracker::createHDKLedIdentifierSimulated(0), camParams,
-                osvr::vbtracker::OsvrHdkLedLocations_SENSOR0, 4, 2);
+                osvr::vbtracker::OsvrHdkLedLocations_SENSOR0,
+                osvr::vbtracker::OsvrHdkLedDirections_SENSOR0,
+                frontPanelFixedBeacon, 4, 2);
             // There are sometimes only four beacons on the back unit (two of
             // the LEDs are disabled), so we let things work with just those.
-            newTracker->addSensor(
+            newTracker->vbtracker().addSensor(
                 osvr::vbtracker::createHDKLedIdentifierSimulated(1), camParams,
-                osvr::vbtracker::OsvrHdkLedLocations_SENSOR1, 4, 0);
+                osvr::vbtracker::OsvrHdkLedLocations_SENSOR1,
+                osvr::vbtracker::OsvrHdkLedDirections_SENSOR1,
+                backPanelFixedBeacon, 4, 0);
             return OSVR_RETURN_SUCCESS;
         }
 #if 0
@@ -304,21 +367,29 @@ class ConfiguredDeviceConstructor {
 #endif
 
         /// Function to execute after the device is created, to add the sensors.
-        auto setupHDKParamsAndSensors = [](VideoBasedHMDTracker &newTracker) {
-            auto camParams = osvr::vbtracker::getHDKCameraParameters();
-            newTracker.addSensor(
-                osvr::vbtracker::createHDKLedIdentifier(0), camParams,
-                osvr::vbtracker::OsvrHdkLedLocations_SENSOR0,
-                osvr::vbtracker::OsvrHdkLedVariances_SENSOR0, 6, 0);
-            newTracker.addSensor(
-                osvr::vbtracker::createHDKLedIdentifier(1), camParams,
-                osvr::vbtracker::OsvrHdkLedLocations_SENSOR1, 4, 0);
-        };
+        std::function<void(VideoBasedHMDTracker & newTracker)>
+            setupHDKParamsAndSensors;
+
+        if (config.includeRearPanel) {
+            setupHDKParamsAndSensors = [config](
+                VideoBasedHMDTracker &newTracker) {
+                osvr::vbtracker::setupSensorsIncludeRearPanel(
+                    newTracker.vbtracker(), config);
+            };
+        } else {
+            // OK, so if we don't have to include the rear panel as part of the
+            // single sensor, that's easy.
+            setupHDKParamsAndSensors = [config](
+                VideoBasedHMDTracker &newTracker) {
+                osvr::vbtracker::setupSensorsWithoutRearPanel(
+                    newTracker.vbtracker(), config);
+            };
+        }
 
         // OK, now that we have our parameters, create the device.
         osvr::pluginkit::PluginContext context(ctx);
         context.registerHardwareDetectCallback(new HardwareDetection(
-            cameraFactory, setupHDKParamsAndSensors, cameraID, showDebug));
+            cameraFactory, setupHDKParamsAndSensors, cameraID, config));
 
         return OSVR_RETURN_SUCCESS;
     }

@@ -34,6 +34,7 @@
 
 // Library/third-party includes
 #include <boost/noncopyable.hpp>
+#include <boost/optional.hpp>
 
 // Standard includes
 #include <string>
@@ -78,12 +79,14 @@ namespace server {
         ///
         /// @throws std::logic_error if a null connection is passed.
         Server(connection::ConnectionPtr const &conn,
-               private_constructor const &);
+               boost::optional<std::string> const &host,
+               boost::optional<int> const &port, private_constructor const &);
 
         /// @brief Destructor - stops the loop and blocks until it's done.
         OSVR_SERVER_EXPORT ~Server();
 
-        /// @brief Create a server object with a local-only connection.
+        /// @brief Create a server object with a local-only (but still IP-based)
+        /// connection.
         OSVR_SERVER_EXPORT static ServerPtr createLocal();
 
         /// @brief Create a server object with a provided connection.
@@ -95,6 +98,21 @@ namespace server {
         /// @throws std::logic_error if a null connection is passed.
         OSVR_SERVER_EXPORT static ServerPtr
         create(connection::ConnectionPtr const &conn);
+
+        /// @overload
+        ///
+        /// Parameters left unspecified/as boost::none will be filled with
+        /// default values.
+        OSVR_SERVER_EXPORT static ServerPtr
+        create(connection::ConnectionPtr const &conn,
+               boost::optional<std::string> const &host,
+               boost::optional<int> const &port);
+
+        /// @brief Create a server object with a provided connection with a
+        /// provided connection that has been asserted to not listen at all to
+        /// outside processes.
+        OSVR_SERVER_EXPORT static ServerPtr
+        createNonListening(connection::ConnectionPtr const &conn);
 
         /// @brief If you aren't using a separate thread for the server, this
         /// method will run a single update of the server.
@@ -218,17 +236,19 @@ namespace server {
             std::string const &server, std::string const &descriptor);
 
         /// @brief Sets the amount of time (in microseconds) that the server
-        /// loop will sleep each loop.
+        /// loop will sleep each loop when a client is connected (0 means no
+        /// sleep)
         ///
         /// Call only before starting the server or from within server thread.
         OSVR_SERVER_EXPORT void setSleepTime(int microseconds);
 
+#if 0
         /// @brief Returns the amount of time (in microseconds) that the server
         /// loop sleeps each loop.
         ///
         /// Call only before starting the server or from within server thread.
         OSVR_SERVER_EXPORT int getSleepTime() const;
-
+#endif
       private:
         unique_ptr<ServerImpl> m_impl;
     };

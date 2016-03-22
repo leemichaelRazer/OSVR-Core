@@ -75,7 +75,7 @@ namespace vbtracker {
             , ".*...**........."    // 29 23
             , ".........*....**"    // 30 24
             , "..*.....**......"    // 31 25
-            , "*......**......."    // 32 26 
+            , "*......**......."    // 32 26
             , "...*.......**..."    // 33 27
             , "...**.....*....."    // 34 28
             , ".**....*........"    // 35 29
@@ -110,7 +110,7 @@ namespace vbtracker {
           , ".*...**........."    //  3
           , ".........*....**"    //  4
           , "..*.....**......"    //  1
-          , "*......**......."    //  2 
+          , "*......**......."    //  2
           , "....*.*..*......"    // 10
           , ".*.*.*.........."    //  8
           , ".........*.**..."    //  9
@@ -145,10 +145,10 @@ namespace vbtracker {
     /// These are from the as-built measurements.
     static const std::vector<std::string>
         OsvrHdkLedIdentifier_SENSOR1_PATTERNS = {
-            "*...........**.."    // 37 31
+            "X............**.."    // 37 31 // never actually turns on in production
           , "......**.*......"    // 38 32
           , ".............***"    // 39 33
-          , "..........*....."    // 40 34
+          , "X..........*....."    // 40 34 // never actually turns on in production
           , "...*.......**..."    // 33 27
           , "...**.....*....."    // 34 28
     };
@@ -166,6 +166,16 @@ namespace vbtracker {
             BOOST_ASSERT_MSG(sensor < 2, "Valid sensors are only 0 or 1!");
             break;
         }
+        return ret;
+    }
+
+    LedIdentifierPtr createHDKUnifiedLedIdentifier() {
+        LedIdentifierPtr ret;
+        std::vector<std::string> patterns = OsvrHdkLedIdentifier_SENSOR0_PATTERNS;
+        patterns.insert(end(patterns),
+                        begin(OsvrHdkLedIdentifier_SENSOR1_PATTERNS),
+                        end(OsvrHdkLedIdentifier_SENSOR1_PATTERNS));
+        ret = createHDKLedIdentifier(patterns);
         return ret;
     }
 

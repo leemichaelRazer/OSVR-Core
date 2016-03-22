@@ -27,6 +27,7 @@
 #include "RunningData.h"
 #include <osvr/Util/EigenFilters.h>
 #include <osvr/Util/EigenInterop.h>
+#include <osvr/Util/ExtractYaw.h>
 
 // Library/third-party includes
 #include <boost/assert.hpp>
@@ -44,8 +45,22 @@ namespace ei = osvr::util::eigen_interop;
 
 namespace filters = osvr::util::filters;
 
+/// These are the levels that the velocity must remain below for a given number
+/// of consecutive frames before we accept a correlation between the IMU and
+/// video as truth.
+static const auto LINEAR_VELOCITY_CUTOFF = 0.2;
+static const auto ANGULAR_VELOCITY_CUTOFF = 1.e-4;
+
+/// The number of low-velocity frames required
+static const std::size_t REQUIRED_SAMPLES = 10;
+
+/// The distance from the camera that we want to encourage users to move within
+/// for best initial startup. Provides the best view of beacons for initial
+/// start of autocalibration.
+static const auto NEAR_MESSAGE_CUTOFF = 0.3;
+
 VideoIMUFusion::VideoIMUFusion(VideoIMUFusionParams const &params)
-    : m_params(params) {
+    : m_params(params), m_roomCalib(Eigen::Isometry3d::Identity()) {
     enterCameraPoseAcquisitionState();
 }
 VideoIMUFusion::~VideoIMUFusion() = default;
@@ -58,21 +73,30 @@ VideoIMUFusion::getErrorCovariance() const {
 }
 
 void VideoIMUFusion::enterRunningState(
-    Eigen::Isometry3d const &cTr, const OSVR_TimeValue &timestamp,
+    Eigen::Isometry3d const &rTc, const OSVR_TimeValue &timestamp,
     const OSVR_PoseReport &report, const OSVR_OrientationState &orientation) {
 #ifdef OSVR_FPE
     FPExceptionEnabler fpe;
 #endif
-    m_cTr = cTr;
-    ei::map(m_camera) = cTr;
+    m_rTc = rTc;
+    std::cout << "\nVideo-IMU fusion: Camera pose acquired, entering normal "
+                 "run mode!\n";
     std::cout << "Camera is located in the room at roughly "
-              << m_cTr.translation().transpose() << std::endl;
+              << m_rTc.translation().transpose() << std::endl;
+
+    if (m_params.cameraIsForward) {
+        auto yaw = osvr::util::extractYaw(Eigen::Quaterniond(m_rTc.rotation()));
+        Eigen::AngleAxisd correction(-yaw, Eigen::Vector3d::UnitY());
+        m_roomCalib = Eigen::Isometry3d(correction);
+    }
+
     m_state = State::Running;
     m_runningData.reset(new VideoIMUFusion::RunningData(
-        m_params, cTr, orientation, report.pose, timestamp));
+        m_params, m_rTc, orientation, report.pose, timestamp));
     /// @todo should we just let it hang around instead of releasing memory in a
     /// callback?
     m_startupData.reset();
+    ei::map(m_camera) = m_roomCalib * m_rTc;
 }
 
 void VideoIMUFusion::handleIMUData(const OSVR_TimeValue &timestamp,
@@ -101,10 +125,14 @@ void VideoIMUFusion::handleIMUVelocity(const OSVR_TimeValue &timestamp,
 }
 
 void VideoIMUFusion::updateFusedOutput(const OSVR_TimeValue &timestamp) {
-    ei::map(m_lastPose).rotation() = m_runningData->getOrientation();
+    Eigen::Isometry3d initialPose =
+        Eigen::Translation3d(m_runningData->getPosition() +
+                             Eigen::Vector3d::UnitY() * m_params.eyeHeight) *
+        m_runningData->getOrientation();
+    Eigen::Isometry3d transformed = m_roomCalib * initialPose;
+    ei::map(m_lastPose).rotation() = Eigen::Quaterniond(transformed.rotation());
     ei::map(m_lastPose).translation() =
-        m_runningData->getPosition() +
-        Eigen::Vector3d::UnitY() * m_params.eyeHeight;
+        Eigen::Vector3d(transformed.translation());
     m_lastTime = timestamp;
 }
 
@@ -118,7 +146,8 @@ void VideoIMUFusion::handleVideoTrackerDataWhileRunning(
     updateFusedOutput(timestamp);
     // For debugging, we will output a second sensor that is just the
     // video tracker data re-oriented.
-    auto videoPose = m_runningData->takeCameraPoseToRoom(report.pose);
+    Eigen::Isometry3d videoPose =
+        m_roomCalib * m_runningData->takeCameraPoseToRoom(report.pose);
     ei::map(m_reorientedVideo) = videoPose;
 }
 
@@ -135,16 +164,59 @@ class VideoIMUFusion::StartupData {
         if (dt <= 0) {
             dt = 1; // in case of weirdness, avoid divide by zero.
         }
-        // tranform from camera to tracked device is dTc
-        // orientation is dTr: room to tracked device
-        // cTr is room to camera, so we can take camera-reported dTc * cTr and
-        // get dTr with position...
-        Eigen::Isometry3d cTr = ei::map(report.pose).transform().inverse() *
-                                Eigen::Isometry3d(ei::map(orientation).quat());
-        positionFilter.filter(dt, cTr.translation());
-        orientationFilter.filter(dt, Eigen::Quaterniond(cTr.rotation()));
-        ++reports;
+        // Pose of tracked device (in camera space) is cTd
+        // orientation is rTd or iTd: tracked device in IMU space (aka room
+        // space, modulo yaw)
+        // rTc is camera in room space (what we want to find), so we can take
+        // camera-reported cTd, perform rTc * cTd, and end up with rTd with
+        // position...
+        Eigen::Isometry3d rTc = Eigen::Isometry3d(ei::map(orientation).quat()) *
+                                ei::map(report.pose).transform().inverse();
+        positionFilter.filter(dt, rTc.translation());
+        orientationFilter.filter(dt, Eigen::Quaterniond(rTc.rotation()));
+        auto linearVel = positionFilter.getDerivativeMagnitude();
+        auto angVel = orientationFilter.getDerivativeMagnitude();
+        // std::cout << "linear " << linearVel << " ang " << angVel << "\n";
+        if (linearVel < LINEAR_VELOCITY_CUTOFF &&
+            angVel < ANGULAR_VELOCITY_CUTOFF) {
+            // OK, velocity within bounds
+            if (reports == 0) {
+                std::cout
+                    << "Video-IMU fusion: Hold still, measuring camera pose";
+            }
+            std::cout << "." << std::flush;
+            ++reports;
+        } else {
+            // reset the count if movement too fast.
+            if (reports > 0) {
+                /// put an end to the dots
+                std::cout << std::endl;
+            }
+            reports = 0;
+            if (!toldToMoveCloser &&
+                osvrVec3GetZ(&report.pose.translation) > NEAR_MESSAGE_CUTOFF) {
+                std::cout
+                    << "\n\nNOTE: For best results, during tracker/server "
+                       "startup, hold your head/HMD still closer than "
+                    << NEAR_MESSAGE_CUTOFF
+                    << " meters from the tracking camera for a few "
+                       "seconds, then rotate slowly in all directions.\n\n"
+                    << std::endl;
+                toldToMoveCloser = true;
+            } else if (toldToMoveCloser && !toldDistanceIsGood &&
+                       osvrVec3GetZ(&report.pose.translation) <
+                           0.9 * NEAR_MESSAGE_CUTOFF) {
+                std::cout
+                    << "\nThat distance looks good, hold it right there.\n"
+                    << std::endl;
+                toldDistanceIsGood = true;
+            }
+        }
         last = timestamp;
+        if (finished()) {
+            /// put an end to the dots
+            std::cout << "\n" << std::endl;
+        }
     }
 
     bool finished() const { return reports >= REQUIRED_SAMPLES; }
@@ -158,9 +230,11 @@ class VideoIMUFusion::StartupData {
     }
 
   private:
-    static const std::size_t REQUIRED_SAMPLES = 10;
     std::size_t reports = 0;
     OSVR_TimeValue last;
+
+    bool toldToMoveCloser = false;
+    bool toldDistanceIsGood = false;
 
     filters::OneEuroFilter<Eigen::Vector3d> positionFilter;
     filters::OneEuroFilter<Eigen::Quaterniond> orientationFilter;

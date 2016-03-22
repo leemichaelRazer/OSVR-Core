@@ -5,8 +5,14 @@ osvr_convert_json(com_osvr_VideoBasedHMDTracker_json
     com_osvr_VideoBasedHMDTracker.json
     "${CMAKE_CURRENT_BINARY_DIR}/com_osvr_VideoBasedHMDTracker_json.h")
 
-# Be able to find our generated header file.
-include_directories("${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/DirectShowCameraLib")
+# Be able to find our generated header file, have shared files find us, and have us find shared files.
+include_directories("${CMAKE_CURRENT_BINARY_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${OSVR_VIDEOTRACKERSHARED_INCLUDE_DIR}")
+if(WIN32)
+    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/DirectShowCameraLib")
+endif()
+
 if(WIN32)
     option(OSVR_FPE
         "Enable floating-point exceptions - only works with MSVC and should never be used for shipping code!"
@@ -24,22 +30,20 @@ add_library(vbtracker-core STATIC
     BeaconBasedPoseEstimator.cpp
     BeaconBasedPoseEstimator_Kalman.cpp
     BeaconBasedPoseEstimator.h
-    cvToEigen.h
-    GetCameraMatrix.h
     HDKLedIdentifier.cpp
     HDKLedIdentifier.h
     HDKLedIdentifierFactory.cpp
     HDKLedIdentifierFactory.h
-    IdentifierHelpers.h
     ImagePointMeasurement.h
     LedIdentifier.cpp
     LedIdentifier.h
     LED.cpp
     LED.h
-    ProjectPoint.h
     Types.h
     VideoBasedTracker.cpp
-    VideoBasedTracker.h)
+    VideoBasedTracker.h
+    ${OSVR_VIDEOTRACKERSHARED_SOURCES_CORE}
+    ${OSVR_VIDEOTRACKERSHARED_SOURCES_HDKDATA})
 
 target_link_libraries(vbtracker-core
     PUBLIC
@@ -68,13 +72,15 @@ set(PLUGIN_SOURCES
     Oculus_DK2.cpp
     Oculus_DK2.h
     "${CMAKE_CURRENT_BINARY_DIR}/com_osvr_VideoBasedHMDTracker_json.h"
-    CameraParameters.h
     CVImageSource.cpp
     DK2ImageSource.cpp
+    ConfigurationParser.h
     ImageSource.cpp
     ImageSource.h
     ImageSourceFactories.h
-    FakeImageSource.cpp)
+    SetupSensors.h
+    FakeImageSource.cpp
+    ${OSVR_VIDEOTRACKERSHARED_SOURCES_IO})
 if(WIN32)
     list(APPEND PLUGIN_SOURCES
         DirectShowHDKCameraFactory.h
@@ -83,7 +89,6 @@ if(WIN32)
 endif()
 
 osvr_add_plugin(NAME com_osvr_VideoBasedHMDTracker
-    MANUAL_LOAD
     CPP # indicates we'd like to use the C++ wrapper
     SOURCES
     ${PLUGIN_SOURCES}
@@ -92,7 +97,7 @@ osvr_add_plugin(NAME com_osvr_VideoBasedHMDTracker
 target_link_libraries(com_osvr_VideoBasedHMDTracker
     vbtracker-core
     vendored-hidapi
-    jsoncpp_lib
+    JsonCpp::JsonCpp
 )
 if(WIN32)
     target_link_libraries(com_osvr_VideoBasedHMDTracker directshow-camera)
@@ -110,6 +115,37 @@ endif()
 
 set_target_properties(com_osvr_VideoBasedHMDTracker PROPERTIES
     FOLDER "OSVR Plugins/Video-Based Tracker")
+
+###
+# Calibration utility
+###
+if(WIN32)
+    set(CALIB_SOURCES
+        VideoTrackerCalibrationUtility.cpp
+        ConfigurationParser.h
+        CVTwoStepProgressBar.h
+        ImageSource.cpp
+        ImageSource.h
+        ImageSourceFactories.h
+        SetupSensors.h
+        DirectShowHDKCameraFactory.h
+        DirectShowImageSource.cpp
+        DirectShowToCV.h
+        ${OSVR_VIDEOTRACKERSHARED_SOURCES_IO})
+    add_executable(VideoTrackerCalibrationUtility ${CALIB_SOURCES})
+    target_link_libraries(VideoTrackerCalibrationUtility
+        PRIVATE
+        vbtracker-core
+        JsonCpp::JsonCpp
+        osvrServer
+        directshow-camera)
+    set_target_properties(VideoTrackerCalibrationUtility PROPERTIES
+        FOLDER "OSVR Plugins/Video-Based Tracker")
+
+    install(TARGETS VideoTrackerCalibrationUtility
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+endif()
+
 
 if(BUILD_TESTING)
     add_executable(vbtracker-cam

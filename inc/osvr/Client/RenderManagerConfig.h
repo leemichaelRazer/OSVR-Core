@@ -73,6 +73,7 @@ namespace osvr {
                 m_verticalSync = params["verticalSyncEnabled"].asBool();
                 m_verticalSyncBlockRendering = params["verticalSyncBlockRenderingEnabled"].asBool();
                 m_renderOverfillFactor = params["renderOverfillFactor"].asFloat();
+                m_renderOversampleFactor = params.get("renderOversampleFactor", 1).asFloat();
 
                 // window
                 {
@@ -84,19 +85,29 @@ namespace osvr {
                 }
 
                 // display
-                    {
-                        auto display = params["display"];
-                        m_displayRotation = display["rotation"].asUInt();
-                        m_bitsPerColor = display["bitsPerColor"].asUInt();
-                    }
+                {
+                    auto display = params["display"];
+                    m_displayRotation = display["rotation"].asUInt();
+                    m_bitsPerColor = display["bitsPerColor"].asUInt();
+                }
 
-                    // time warp
-                    {
-                        auto &timeWarp = params["timeWarp"];
-                        m_enableTimeWarp = timeWarp["enabled"].asBool();
-                        m_asynchronousTimeWarp = timeWarp["asynchronous"].asBool();
-                        m_maxMSBeforeVsyncTimeWarp = timeWarp["maxMsBeforeVSync"].asFloat();
-                    }
+                // time warp
+                {
+                    auto &timeWarp = params["timeWarp"];
+                    m_enableTimeWarp = timeWarp["enabled"].asBool();
+                    m_asynchronousTimeWarp = timeWarp["asynchronous"].asBool();
+                    m_maxMSBeforeVsyncTimeWarp = timeWarp["maxMsBeforeVSync"].asFloat();
+                }
+
+                // prediction
+                {
+                  auto prediction = params["prediction"];
+                  m_predictEnabled = prediction["enabled"].asBool();
+                  m_predictStaticDelayMS = prediction["staticDelayMS"].asFloat();
+                  m_predictLeftEyeDelayMS = prediction["leftEyeDelayMS"].asFloat();
+                  m_predictRightEyeDelayMS = prediction["rightEyeDelayMS"].asFloat();
+                  m_predictLocalTimeOverride = prediction["localTimeOverride"].asBool();
+                }
             }
 
             inline void print() const
@@ -112,10 +123,16 @@ namespace osvr {
                 std::cout << "Window Y Position: " << m_windowYPosition << std::endl;
                 std::cout << "Display rotation: " << m_displayRotation << std::endl;
                 std::cout << "Bits per color: " << m_bitsPerColor << std::endl;
+                std::cout << "Prediction enabled: " << m_predictEnabled << std::endl;
+                std::cout << "Static delay (ms): " << m_predictStaticDelayMS << std::endl;
+                std::cout << "Left eye delay (ms): " << m_predictLeftEyeDelayMS << std::endl;
+                std::cout << "Right eye delay (ms): " << m_predictRightEyeDelayMS << std::endl;
+                std::cout << "Prediction local time override: " << m_predictLocalTimeOverride << std::endl;
                 std::cout << "Enable time warp: " << m_enableTimeWarp << std::endl;
                 std::cout << "Asynchronous time warp: " << m_asynchronousTimeWarp << std::endl;
                 std::cout << "Max ms before vsync time warp: " << m_maxMSBeforeVsyncTimeWarp << std::endl;
                 std::cout << "Render overfill factor: " << m_renderOverfillFactor << std::endl;
+                std::cout << "Render oversample factor: " << m_renderOversampleFactor << std::endl;
             }
 
             /// Read the property information.
@@ -152,6 +169,11 @@ namespace osvr {
             inline float getRenderOverfillFactor() const
             {
                 return m_renderOverfillFactor;
+            }
+
+            inline float getRenderOversampleFactor() const
+            {
+              return m_renderOversampleFactor;
             }
 
             inline std::size_t getNumBuffers() const
@@ -199,6 +221,30 @@ namespace osvr {
                 return m_bitsPerColor;
             }
 
+            inline bool getclientPredictionEnabled() const
+            {
+              return m_predictEnabled;
+            }
+
+            inline float getStaticDelayMS() const
+            {
+              return m_predictStaticDelayMS;
+            }
+
+            inline float getLeftEyeDelayMS() const
+            {
+              return m_predictLeftEyeDelayMS;
+            }
+
+            inline float getRightEyeDelayMS() const
+            {
+              return m_predictRightEyeDelayMS;
+            }
+
+            inline bool getclientPredictionLocalTimeOverride() const
+            {
+              return m_predictLocalTimeOverride;
+            }
 
         private:
             bool m_directMode;
@@ -214,11 +260,17 @@ namespace osvr {
             int32_t m_windowYPosition;
             uint32_t m_displayRotation;
             uint32_t m_bitsPerColor;
+            bool m_predictEnabled;
+            float m_predictStaticDelayMS;
+            float m_predictLeftEyeDelayMS;
+            float m_predictRightEyeDelayMS;
+            bool m_predictLocalTimeOverride;
 
             bool m_enableTimeWarp;
             bool m_asynchronousTimeWarp;
             float m_maxMSBeforeVsyncTimeWarp;
             float m_renderOverfillFactor;
+            float m_renderOversampleFactor;
         };
 
         typedef std::shared_ptr<RenderManagerConfig> RenderManagerConfigPtr;

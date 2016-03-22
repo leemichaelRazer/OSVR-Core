@@ -30,19 +30,16 @@
 // Library/third-party includes
 #include <osvr/Util/EigenCoreGeometry.h>
 #include <osvr/Util/EigenInterop.h>
+#include <opencv2/calib3d/calib3d.hpp>
 
 // Standard includes
-// - none
+#include <iostream>
+#include <stdexcept>
 
 namespace osvr {
 namespace vbtracker {
     /// millimeters to meters
     static const double LINEAR_SCALE_FACTOR = 1000.;
-
-    // 0 effectively turns off beacon auto-calib.
-    // This is a variance number, so std deviation squared, but it's between 0
-    // and 1, so the variance will be smaller than the standard deviation.
-    static const double INITIAL_BEACON_ERROR = 0.005;
 
     static const auto DEFAULT_MEASUREMENT_VARIANCE = 3.0;
 
@@ -50,188 +47,91 @@ namespace vbtracker {
     // before RANSAC takes over again.
     static const std::size_t MAX_PROBATION_FRAMES = 10;
 
-    // clang-format off
-    // Default 3D locations for the beacons on an OSVR HDK face plate, in
-    // millimeters
-    const Point3Vector OsvrHdkLedLocations_SENSOR0 = {
-        cv::Point3f( -85, 3, 24.09 ),
-        cv::Point3f( -83.2, -14.01, 13.89 ),
-        cv::Point3f( -47, 51, 24.09 ),
-        cv::Point3f( 47, 51, 24.09 ),
-        cv::Point3f( 86.6, 2.65, 24.09 ),
-        cv::Point3f( 85.5, -14.31, 13.89 ),
-        cv::Point3f( 85.2, 19.68, 13.89 ),
-        cv::Point3f( 21, 51, 24.09 ),  // Original spec was 13.09, new position works better
-        cv::Point3f( -21, 51, 24.09 ), // Original spec was 13.09, new position works better
-        cv::Point3f( -84.2, 19.99, 13.89 ),
-        cv::Point3f( -60.41, 47.55, 44.6 ),
-        cv::Point3f( -80.42, 20.48, 42.9 ),
-        cv::Point3f( -82.01, 2.74, 42.4 ),
-        cv::Point3f( -80.42, -14.99, 42.9 ),
-        cv::Point3f( -60.41, -10.25, 48.1 ),
-        cv::Point3f( -60.41, 15.75, 48.1 ),
-        cv::Point3f( -30.41, 32.75, 50.5 ),
-        cv::Point3f( -31.41, 47.34, 47 ),
-        cv::Point3f( -0.41, -15.25, 51.3 ),
-        cv::Point3f( -30.41, -27.25, 50.5 ),
-        cv::Point3f( -60.44, -41.65, 45.1 ),
-        cv::Point3f( -22.41, -41.65, 47.8 ),
-        cv::Point3f( 21.59, -41.65, 47.8 ),
-        cv::Point3f( 59.59, -41.65, 45.1 ),
-        cv::Point3f( 79.63, -14.98, 42.9 ),
-        cv::Point3f( 29.59, -27.25, 50.5 ),
-        cv::Point3f( 81.19, 2.74, 42.4 ),
-        cv::Point3f( 79.61, 20.48, 42.9 ),
-        cv::Point3f( 59.59, 47.55, 44.6 ),
-        cv::Point3f( 30.59, 47.55, 47 ),
-        cv::Point3f( 29.59, 32.75, 50.5 ),
-        cv::Point3f( -0.41, 20.75, 51.3 ),
-        cv::Point3f( 59.59, 15.75, 48.1 ),
-        cv::Point3f( 59.59, -10.25, 48.1 )
-    };
+    static const std::size_t MAX_FRAMES_WITHOUT_MEASUREMENTS = 50;
 
-    // Default 3D locations for the beacons on an OSVR HDK back plate, in
-    // millimeters
-    const Point3Vector OsvrHdkLedLocations_SENSOR1 = {
-        cv::Point3f( 1, 23.8, 0 ),
-        cv::Point3f( 11, 5.8, 0 ),
-        cv::Point3f( 9, -23.8, 0 ),
-        cv::Point3f( 0, -8.8, 0 ),
-        cv::Point3f( -9, -23.8, 0 ),
-        cv::Point3f( -12, 5.8, 0 )
-    };
-    // clang-format on
-
-    const std::vector<double> OsvrHdkLedVariances_SENSOR0 = {
-        15.0, 15.0, 6.0, 3.0, 15.0, 15.0, 15.0, 6.0, 6.0, 15.0, 3.0, 3.0,
-        3.0,  3.0,  3.0, 3.0, 3.0,  3.0,  3.0,  3.0, 3.0, 3.0,  3.0, 3.0,
-        3.0,  6.0,  3.0, 3.0, 3.0,  3.0,  3.0,  3.0, 6.0, 3.0};
+    static const std::size_t MAX_FRAMES_WITHOUT_ID_BLOBS = 10;
 
     BeaconBasedPoseEstimator::BeaconBasedPoseEstimator(
-        const DoubleVecVec &cameraMatrix, const std::vector<double> &distCoeffs,
-        const Point3Vector &beacons, size_t requiredInliers,
-        size_t permittedOutliers) {
-        SetBeacons(beacons);
-        SetCameraMatrix(cameraMatrix);
-        SetDistCoeffs(distCoeffs);
+        CameraParameters const &camParams, size_t requiredInliers,
+        size_t permittedOutliers, ConfigParams const &params)
+        : m_params(params), m_camParams(camParams) {
         m_gotPose = false;
         m_requiredInliers = requiredInliers;
         m_permittedOutliers = permittedOutliers;
     }
 
-    bool BeaconBasedPoseEstimator::SetBeacons(const Point3Vector &beacons) {
-        return SetBeacons(beacons, DEFAULT_MEASUREMENT_VARIANCE);
-    }
-
-    bool BeaconBasedPoseEstimator::SetBeacons(const Point3Vector &beacons,
-                                              double variance) {
-        // Our existing pose won't match anymore.
-        m_gotPose = false;
-        m_beacons.clear();
-        m_updateBeaconCentroid(beacons);
-
-        Eigen::Matrix3d beaconError =
-            Eigen::Vector3d::Constant(INITIAL_BEACON_ERROR).asDiagonal();
-        auto bNum = size_t{0};
-        for (auto &beacon : beacons) {
-            m_beacons.emplace_back(new BeaconState{
-                cvToVector(beacon).cast<double>() - m_centroid,
-                // This forces the first 3 beacons to be artificially "perfect"
-                // to avoid hunting by the algorithm
-                bNum < 4 ? Eigen::Matrix3d::Zero() : beaconError});
-            bNum++;
-        }
-        m_beaconMeasurementVariance.assign(m_beacons.size(), variance);
-        return true;
-    }
-
-    bool
-    BeaconBasedPoseEstimator::SetBeacons(const Point3Vector &beacons,
-                                         std::vector<double> const &variance) {
+    bool BeaconBasedPoseEstimator::SetBeacons(
+        const Point3Vector &beacons, Vec3Vector const &emissionDirection,
+        std::vector<double> const &variance,
+        BeaconIDPredicate const &autocalibrationFixedPredicate,
+        double beaconAutocalibErrorScale) {
         // Our existing pose won't match anymore.
         m_gotPose = false;
         m_beacons.clear();
         m_updateBeaconCentroid(beacons);
         Eigen::Matrix3d beaconError =
-            Eigen::Vector3d::Constant(INITIAL_BEACON_ERROR).asDiagonal();
+            Eigen::Vector3d::Constant(m_params.initialBeaconError)
+                .asDiagonal() *
+            beaconAutocalibErrorScale;
         auto bNum = size_t{0};
         for (auto &beacon : beacons) {
+            auto isFixed = autocalibrationFixedPredicate(bNum + 1);
+            m_beaconFixed.push_back(isFixed);
             m_beacons.emplace_back(new BeaconState{
                 cvToVector(beacon).cast<double>() - m_centroid,
-                bNum < 4 ? Eigen::Matrix3d::Zero() : beaconError});
+                isFixed ? Eigen::Matrix3d::Zero() : beaconError});
             bNum++;
         }
-        m_beaconMeasurementVariance = variance;
+        if (1 == variance.size()) {
+            /// A single entry in the variance array implies use that for all
+            /// beacons.
+            m_beaconMeasurementVariance.resize(m_beacons.size(), variance[0]);
+        } else {
+            m_beaconMeasurementVariance = variance;
+        }
         // ensure it's the right size
         m_beaconMeasurementVariance.resize(m_beacons.size(),
                                            DEFAULT_MEASUREMENT_VARIANCE);
+
+        m_beaconEmissionDirection = emissionDirection;
+        if (m_beaconEmissionDirection.size() != m_beacons.size()) {
+            throw std::runtime_error("Beacon emission direction array size did "
+                                     "not match number of beacons!");
+        }
+        // Prep the debug data.
+        m_updateBeaconDebugInfoArray();
         return true;
     }
 
     void BeaconBasedPoseEstimator::m_updateBeaconCentroid(
         const Point3Vector &beacons) {
-        Eigen::Vector3d beaconSum = Eigen::Vector3d::Zero();
-        auto bNum = size_t{0};
-        for (auto &beacon : beacons) {
-            beaconSum += cvToVector(beacon).cast<double>();
-            bNum++;
+        if (m_params.offsetToCentroid) {
+            Eigen::Vector3d beaconSum = Eigen::Vector3d::Zero();
+            auto bNum = size_t{0};
+            for (auto &beacon : beacons) {
+                beaconSum += cvToVector(beacon).cast<double>();
+                bNum++;
+            }
+            m_centroid = beaconSum / bNum;
+            if (m_params.debug) {
+                std::cout << "Beacon centroid: " << m_centroid.transpose()
+                          << std::endl;
+            }
+        } else {
+            m_centroid = Eigen::Vector3d::Map(m_params.manualBeaconOffset);
         }
-        m_centroid = beaconSum / bNum;
     }
 
-    bool BeaconBasedPoseEstimator::SetCameraMatrix(
-        const DoubleVecVec &cameraMatrix) {
+    void BeaconBasedPoseEstimator::m_updateBeaconDebugInfoArray() {
+        m_beaconDebugData.resize(m_beacons.size());
+    }
+
+    bool BeaconBasedPoseEstimator::SetCameraParameters(
+        CameraParameters const &camParams) {
         // Our existing pose won't match anymore.
         m_gotPose = false;
 
-        // Construct the camera matrix from the vectors we received.
-        if (cameraMatrix.size() != 3) {
-            return false;
-        }
-        for (size_t i = 0; i < cameraMatrix.size(); i++) {
-            if (cameraMatrix[i].size() != 3) {
-                return false;
-            }
-        }
-        cv::Mat newCameraMatrix(static_cast<int>(cameraMatrix.size()),
-                                static_cast<int>(cameraMatrix[0].size()),
-                                CV_64F);
-        for (int i = 0; i < cameraMatrix.size(); i++) {
-            for (int j = 0; j < cameraMatrix[i].size(); j++) {
-                newCameraMatrix.at<double>(i, j) = cameraMatrix[i][j];
-            }
-        }
-
-        m_cameraMatrix = newCameraMatrix;
-
-        // Extract just the pieces we'll use
-        m_focalLength = m_cameraMatrix.at<double>(0, 0);
-        m_principalPoint = Eigen::Vector2d{m_cameraMatrix.at<double>(0, 2),
-                                           m_cameraMatrix.at<double>(1, 2)};
-        //    std::cout << "XXX cameraMatrix =" << std::endl << m_cameraMatrix
-        //    << std::endl;
-        return true;
-    }
-
-    bool BeaconBasedPoseEstimator::SetDistCoeffs(
-        const std::vector<double> &distCoeffs) {
-        // Our existing pose won't match anymore.
-        m_gotPose = false;
-
-        // Construct the distortion matrix from the vectors we received.
-        if (distCoeffs.size() < 5) {
-            return false;
-        }
-        cv::Mat newDistCoeffs(static_cast<int>(distCoeffs.size()), 1, CV_64F);
-        for (int i = 0; i < distCoeffs.size(); i++) {
-            newDistCoeffs.at<double>(i, 0) = distCoeffs[i];
-        }
-
-        m_distCoeffs = newDistCoeffs;
-        /// @todo use these in the kalman path
-
-        //    std::cout << "XXX distCoeffs =" << std::endl << m_distCoeffs <<
-        //    std::endl;
+        m_camParams = camParams;
         return true;
     }
 
@@ -239,22 +139,20 @@ namespace vbtracker {
         OSVR_PoseState ret;
         util::eigen_interop::map(ret).rotation() = m_state.getQuaternion();
         util::eigen_interop::map(ret).translation() =
-            m_convertInternalPositionRepToExternal(m_state.getPosition());
+            m_convertInternalPositionRepToExternal(m_state.position());
         return ret;
     }
 
     Eigen::Vector3d BeaconBasedPoseEstimator::GetLinearVelocity() const {
-        return m_state.getVelocity() / LINEAR_SCALE_FACTOR;
+        return m_state.velocity() / LINEAR_SCALE_FACTOR;
     }
 
     Eigen::Vector3d BeaconBasedPoseEstimator::GetAngularVelocity() const {
-        return m_state.getAngularVelocity();
+        return m_state.angularVelocity();
     }
 
-    bool
-    BeaconBasedPoseEstimator::EstimatePoseFromLeds(const LedGroup &leds,
-                                                   OSVR_TimeValue const &tv,
-                                                   OSVR_PoseState &outPose) {
+    bool BeaconBasedPoseEstimator::EstimatePoseFromLeds(
+        LedGroup &leds, OSVR_TimeValue const &tv, OSVR_PoseState &outPose) {
         auto ret = m_estimatePoseFromLeds(leds, tv, outPose);
         m_gotPose = ret;
         return ret;
@@ -264,19 +162,26 @@ namespace vbtracker {
         Eigen::Vector3d const &pos) const {
         return (pos + m_centroid) / LINEAR_SCALE_FACTOR;
     }
-    bool
-    BeaconBasedPoseEstimator::m_estimatePoseFromLeds(const LedGroup &leds,
-                                                     OSVR_TimeValue const &tv,
-                                                     OSVR_PoseState &outPose) {
+    bool BeaconBasedPoseEstimator::m_estimatePoseFromLeds(
+        LedGroup &leds, OSVR_TimeValue const &tv, OSVR_PoseState &outPose) {
+        if (m_params.streamBeaconDebugInfo) {
+            /// Only bother resetting if anyone is actually going to receive the
+            /// data.
+            for (auto &data : m_beaconDebugData) {
+                data.reset();
+            }
+        }
+
+        /// Check on the health of the Kalman filter.
+        auto didReset = m_forceRansacIfKalmanNeedsReset(leds);
+        if (didReset && m_params.debug) {
+            std::cout << "Video-based tracker: lost fix, in-flight reset"
+                      << std::endl;
+        }
+
         bool usedKalman = false;
         bool result = false;
-        if (m_framesInProbation > MAX_PROBATION_FRAMES) {
-            // Kalman filter started returning too high of residuals - going
-            // back to RANSAC until we get a good lock again.
-            m_gotPose = false;
-            m_framesInProbation = 0;
-        }
-        if (!m_gotPose || !m_gotPrev) {
+        if (!m_gotPose || !m_gotPrev || !m_permitKalman) {
             // Must use the direct approach
             result = m_pnpransacEstimator(leds);
         } else {
@@ -300,12 +205,53 @@ namespace vbtracker {
         if (usedKalman) {
             auto currentTime = util::time::getNow();
             auto dt2 = osvrTimeValueDurationSeconds(&currentTime, &tv);
-            outPose = GetPredictedState(dt2);
+            outPose = GetPredictedState(dt2 + m_params.additionalPrediction);
         }
         return true;
     }
 
-    bool BeaconBasedPoseEstimator::m_pnpransacEstimator(const LedGroup &leds) {
+    bool BeaconBasedPoseEstimator::m_forceRansacIfKalmanNeedsReset(
+        LedGroup const &leds) {
+        auto needsReset = (m_framesInProbation > MAX_PROBATION_FRAMES) ||
+                          (m_framesWithoutUtilizedMeasurements >
+                           MAX_FRAMES_WITHOUT_MEASUREMENTS);
+        /// Additional case: We've been a while without blobs...
+        if (!needsReset &&
+            m_framesWithoutIdentifiedBlobs > MAX_FRAMES_WITHOUT_ID_BLOBS) {
+            // In this case, we force ransac once we get blobs once again.
+            auto const beaconsSize = m_beacons.size();
+            for (auto const &led : leds) {
+                if (!led.identified()) {
+                    continue;
+                }
+                auto id = led.getID();
+                if (id < beaconsSize) {
+                    needsReset = true;
+                    break;
+                }
+            }
+        }
+        if (needsReset) {
+            m_framesInProbation = 0;
+            m_framesWithoutUtilizedMeasurements = 0;
+            m_framesWithoutIdentifiedBlobs = 0;
+
+            /// Need to reset all elements of the state vector
+            /// The directly-set ones will be set once RANSAC has a pose, but
+            /// incremental orientation, and the velocities, aren't directly set
+            /// by ransac and we don't want old values to hang around there,
+            /// it's a good way to poison a new state.
+            using StateVec = kalman::types::DimVector<State>;
+            m_state.setStateVector(StateVec::Zero());
+
+            /// This is what triggers RANSAC instead of the Kalman mode for the
+            /// next frame.
+            m_gotPose = false;
+        }
+        return needsReset;
+    }
+
+    bool BeaconBasedPoseEstimator::m_pnpransacEstimator(LedGroup &leds) {
         // We need to get a pair of matched vectors of points: 2D locations
         // with in the image and 3D locations in model space.  There needs to
         // be a correspondence between the points in these vectors, such that
@@ -322,6 +268,8 @@ namespace vbtracker {
             }
             auto id = led.getID();
             if (id < beaconsSize) {
+                m_beaconDebugData[id].variance = -1;
+                m_beaconDebugData[id].measurement = led.getLocation();
                 imagePoints.push_back(led.getLocation());
                 objectPoints.push_back(
                     vec3dToCVPoint3f(m_beacons[id]->stateVector()));
@@ -345,11 +293,30 @@ namespace vbtracker {
         bool usePreviousGuess = false;
         int iterationsCount = 5;
         cv::Mat inlierIndices;
+
+#if CV_MAJOR_VERSION == 2
         cv::solvePnPRansac(
-            objectPoints, imagePoints, m_cameraMatrix, m_distCoeffs, m_rvec,
-            m_tvec, usePreviousGuess, iterationsCount, 8.0f,
+            objectPoints, imagePoints, m_camParams.cameraMatrix,
+            m_camParams.distortionParameters, m_rvec, m_tvec, usePreviousGuess,
+            iterationsCount, 8.0f,
             static_cast<int>(objectPoints.size() - m_permittedOutliers),
             inlierIndices);
+#elif CV_MAJOR_VERSION == 3
+        // parameter added to the OpenCV 3.0 interface in place of the number of
+        // inliers
+        /// @todo how to determine this requested confidence from the data we're
+        /// given?
+        double confidence = 0.99;
+        auto ransacResult = cv::solvePnPRansac(
+            objectPoints, imagePoints, m_camParams.cameraMatrix,
+            m_camParams.distortionParameters, m_rvec, m_tvec, usePreviousGuess,
+            iterationsCount, 8.0f, confidence, inlierIndices);
+        if (!ransacResult) {
+            return false;
+        }
+#else
+#error "Unrecognized OpenCV version!"
+#endif
 
         //==========================================================================
         // Make sure we got all the inliers we needed.  Otherwise, reject this
@@ -370,8 +337,9 @@ namespace vbtracker {
                 inlierImagePoints.push_back(imagePoints[i]);
             }
             std::vector<cv::Point2f> reprojectedPoints;
-            cv::projectPoints(inlierObjectPoints, m_rvec, m_tvec,
-                              m_cameraMatrix, m_distCoeffs, reprojectedPoints);
+            cv::projectPoints(
+                inlierObjectPoints, m_rvec, m_tvec, m_camParams.cameraMatrix,
+                m_camParams.distortionParameters, reprojectedPoints);
 
             for (size_t i = 0; i < reprojectedPoints.size(); i++) {
                 if (reprojectedPoints[i].x - inlierImagePoints[i].x >
@@ -426,34 +394,65 @@ namespace vbtracker {
             beacons.push_back(vec3dToCVPoint3f(beacon->stateVector()));
         }
         // Do the OpenCV projection.
-        cv::projectPoints(beacons, m_rvec, m_tvec, m_cameraMatrix, m_distCoeffs,
-                          out);
+        cv::projectPoints(beacons, m_rvec, m_tvec, m_camParams.cameraMatrix,
+                          m_camParams.distortionParameters, out);
         return true;
     }
 
-    static const double InitialStateError[] = {1.,  1.,  10., 1.,  1.,  1.,
+    void BeaconBasedPoseEstimator::permitKalmanMode(bool permitKalman) {
+        m_permitKalman = permitKalman;
+    }
+
+    Eigen::Vector3d
+    BeaconBasedPoseEstimator::getBeaconAutocalibPosition(std::size_t i) const {
+        return m_beacons.at(i)->stateVector();
+    }
+
+    Eigen::Vector3d
+    BeaconBasedPoseEstimator::getBeaconAutocalibVariance(std::size_t i) const {
+        return m_beacons.at(i)->errorCovariance().diagonal();
+    }
+
+#if 0
+    static const double InitialStateError[] = {.01, .01, .1,  1.,  1.,  .1,
                                                10., 10., 10., 10., 10., 10.};
-    static const double NoiseAutoCorrelation[] = {1e+2, 5e+1, 1e+2,
-                                                  5e-1, 5e-1, 5e-1};
+#endif
+    static const double InitialStateError[] = {0,   0,   0,   0,   0,   0,
+                                               10., 10., 10., 10., 10., 10.};
     void
     BeaconBasedPoseEstimator::m_resetState(Eigen::Vector3d const &xlate,
                                            Eigen::Quaterniond const &quat) {
         // Note that here, units are millimeters and radians, and x and z are
         // the lateral translation dimensions, with z being distance from camera
         using StateVec = kalman::types::DimVector<State>;
-        StateVec state(StateVec::Zero());
-        state.head<3>() = xlate;
-        m_state.setStateVector(state);
+
+        m_state.position() = xlate;
+
         m_state.setQuaternion(quat);
         m_state.setErrorCovariance(StateVec(InitialStateError).asDiagonal());
 
-        m_model.setDamping(0.3);
+        m_model.setDamping(m_params.linearVelocityDecayCoefficient,
+                           m_params.angularVelocityDecayCoefficient);
         m_model.setNoiseAutocorrelation(
-            kalman::types::Vector<6>(NoiseAutoCorrelation));
+            kalman::types::Vector<6>(m_params.processNoiseAutocorrelation));
 
-        std::cout << "State:" << m_state.stateVector().transpose()
-                  << "\n  with quaternion "
-                  << m_state.getQuaternion().coeffs().transpose() << std::endl;
+        if (m_params.debug && m_permitKalman) {
+            std::cout << "Video-based tracker: Beacon entering run state: pos:"
+                      << m_state.position().transpose() << "\n orientation: "
+                      << m_state.getQuaternion().coeffs().transpose()
+                      << std::endl;
+        }
+    }
+
+    void BeaconBasedPoseEstimator::dumpBeaconLocationsToStream(
+        std::ostream &os) const {
+        Eigen::IOFormat ourFormat(Eigen::StreamPrecision, 0, ",");
+        for (auto const &beacon : m_beacons) {
+            os << (beacon->stateVector() + m_centroid)
+                      .transpose()
+                      .format(ourFormat)
+               << std::endl;
+        }
     }
 
 } // namespace vbtracker

@@ -25,13 +25,18 @@
 // Internal Includes
 #include "VideoBasedTracker.h"
 #include "HDKLedIdentifierFactory.h"
+#include "CameraParameters.h"
+#include "HDKData.h"
 
 // Library/third-party includes
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 // Standard includes
 #include <iostream>
+
+using osvr::vbtracker::CameraParameters;
 
 class Main {
   public:
@@ -66,20 +71,15 @@ class Main {
         double cy = height / 2.0;
         double fx = 700.0; // XXX This needs to be in pixels, not mm
         double fy = fx;
-        std::vector<std::vector<double> > m;
-        m.push_back({fx, 0.0, cx});
-        m.push_back({0.0, fy, cy});
-        m.push_back({0.0, 0.0, 1.0});
-        std::vector<double> d;
-        d.push_back(0);
-        d.push_back(0);
-        d.push_back(0);
-        d.push_back(0);
-        d.push_back(0);
-        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifier(0), m, d,
-                              osvr::vbtracker::OsvrHdkLedLocations_SENSOR0);
-        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifier(1), m, d,
-                              osvr::vbtracker::OsvrHdkLedLocations_SENSOR1);
+        CameraParameters camParams(fx, fy, cv::Size(width, height));
+        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifier(0),
+                              camParams,
+                              osvr::vbtracker::OsvrHdkLedLocations_SENSOR0,
+                              osvr::vbtracker::OsvrHdkLedDirections_SENSOR0);
+        m_vbtracker.addSensor(osvr::vbtracker::createHDKLedIdentifier(1),
+                              camParams,
+                              osvr::vbtracker::OsvrHdkLedLocations_SENSOR1,
+                              osvr::vbtracker::OsvrHdkLedDirections_SENSOR1);
         m_valid = true;
     }
 

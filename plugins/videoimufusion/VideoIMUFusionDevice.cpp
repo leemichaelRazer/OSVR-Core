@@ -42,7 +42,9 @@
 
 static const OSVR_ChannelCount FUSED_SENSOR_ID = 0;
 static const OSVR_ChannelCount TRANSFORMED_VIDEO_SENSOR_ID = 1;
+static const OSVR_ChannelCount CAMERA_SENSOR_ID = 2;
 
+static const auto INTERVAL_BETWEEN_CAMERA_REPORTS = std::chrono::seconds(1);
 VideoIMUFusionDevice::VideoIMUFusionDevice(OSVR_PluginRegContext ctx,
                                            std::string const &name,
                                            std::string const &imuPath,
@@ -92,6 +94,27 @@ VideoIMUFusionDevice::~VideoIMUFusionDevice() {
         osvrClientFreeInterface(m_clientCtx, m_videoTracker);
         m_imu = nullptr;
     }
+}
+
+
+OSVR_ReturnCode VideoIMUFusionDevice::update() {
+    if (m_shouldReportCamera()) {
+        m_nextCameraReport = our_clock::now() + INTERVAL_BETWEEN_CAMERA_REPORTS;
+
+        osvrDeviceTrackerSendPose(m_dev, m_trackerOut,
+                                  &m_fusion.getLatestCameraPose(),
+                                  CAMERA_SENSOR_ID);
+    }
+    return OSVR_RETURN_SUCCESS;
+}
+
+bool VideoIMUFusionDevice::m_shouldReportCamera() const {
+    if (m_fusion.running()) {
+        if (!m_reportedCamera || m_nextCameraReport < our_clock::now()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void VideoIMUFusionDevice::s_handleIMUData(
@@ -159,8 +182,17 @@ void VideoIMUFusionDevice::handleVideoTrackerData(
         auto oriState = OSVR_OrientationState{};
         auto ret = osvrGetOrientationState(m_imu, &ts, &oriState);
         if (ret != OSVR_RETURN_SUCCESS) {
-            std::cout << "Got a video report before an IMU report, ignoring it"
-                      << std::endl;
+            static int i = 0;
+            if (i == 20) {
+                std::cout << "\n\nWarning: Have received several video tracker "
+                             "reports without receiving one from the IMU, "
+                             "which shouldn't happen. Please try "
+                             "disconnecting/reconnecting and restarting the "
+                             "server, and if this re-occurs, double-check your "
+                             "configuration files.\n"
+                          << std::endl;
+            }
+            i++;
             return;
         }
         m_fusion.handleVideoTrackerDataDuringStartup(timestamp, report,

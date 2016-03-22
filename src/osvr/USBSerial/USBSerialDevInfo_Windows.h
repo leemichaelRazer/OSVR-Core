@@ -26,6 +26,7 @@
 // Internal Includes
 #include "USBSerialDevInfo.h"
 #include <osvr/Util/WideToUTF8.h>
+#include <osvr/Util/StdInt.h>
 
 // Library/third-party includes
 #define _WIN32_DCOM
@@ -34,13 +35,20 @@
 #include <Wbemidl.h>
 #include <tchar.h>
 #include <windows.h>
-#include "intrusive_ptr_COM.h"
+
+#include <comutils/ComVariant.h>
+#include <intrusive_ptr_COM.h>
+
 #include <boost/intrusive_ptr.hpp>
 #include <boost/noncopyable.hpp>
 
 // Standard includes
 #include <regex>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <algorithm> // for std::transform
+#include <string>
 
 namespace osvr {
 namespace usbserial {
@@ -49,28 +57,95 @@ namespace usbserial {
         /// @brief RAII wrapper for initializing/uninitializing COM.
         class ComRAII : boost::noncopyable {
           public:
-            ComRAII() : m_failed(false) {
+            ComRAII() {
                 auto result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
                 if (FAILED(result)) {
                     m_failed = true;
                 }
             }
             ~ComRAII() {
-                if (!m_failed) {
-                    CoUninitialize();
-                }
+                // Must call, even if it failed.
+                CoUninitialize();
             }
             bool failed() const { return m_failed; }
 
           private:
-            bool m_failed;
+            bool m_failed = false;
+        };
+
+        /// Class to contain the workings of extracting VID and PID from a
+        /// hardware ID, which are similar and repetitive.
+        ///
+        /// Can be (intended to be) used for multiple hardware ID strings.
+        class USBVidPidExtractor {
+          public:
+            USBVidPidExtractor()
+                : m_vidPidRegex(
+                      "USB.VID_([[:xdigit:]]{4})&PID_([[:xdigit:]]{4})") {}
+
+            boost::optional<std::pair<uint16_t, uint16_t>>
+            getVidPid(std::string const &hardwareId) {
+                std::smatch m;
+                if (!std::regex_search(hardwareId, m, m_vidPidRegex)) {
+                    // Couldn't find it - that's weird.
+                    // Might not be a USB serial port (could be a "regular" one)
+                    return boost::none;
+                }
+                // first submatch is vid, second submatch is pid.
+                return std::make_pair(m_hexToInt(m.str(1)),
+                                      m_hexToInt(m.str(2)));
+            }
+
+          private:
+            /// Convert hex, such as that found in a VID:PID string, to the
+            /// corresponding 16-bit unsigned int.
+            uint16_t m_hexToInt(std::string const &str) {
+                m_ss.clear();
+                uint16_t ret;
+                m_ss << std::hex << str;
+                m_ss >> ret;
+                return ret;
+            }
+
+            /// @name Regex to extract the hex VID and PID from a string.
+            std::regex m_vidPidRegex;
+
+            /// String stream used to convert the hex string to an int.
+            std::stringstream m_ss;
         };
     } // namespace
+
+    inline std::string
+    getPNPDeviceIdSearchString(boost::optional<uint16_t> const &vendorID,
+                               boost::optional<uint16_t> const &productID) {
+        /// The "haystack" these will be used to search through looks like this:
+        /// USB\VID_1532&PID_0B00&MI_00\...
+        std::ostringstream searchTerms;
+        if (vendorID) {
+            searchTerms << "VID_" << std::setfill('0') << std::setw(4)
+                        << std::hex << *vendorID;
+        }
+        if (vendorID && productID) {
+            searchTerms << "&";
+        }
+        if (productID) {
+            searchTerms << "PID_" << std::setfill('0') << std::setw(4)
+                        << std::hex << *productID;
+        }
+        // Convert to all upper-case, in place.
+        std::string ret{searchTerms.str()};
+        std::transform(begin(ret), end(ret), begin(ret),
+                       [](char c) { return ::toupper(c); });
+
+        return ret;
+    }
 
     std::vector<USBSerialDevice>
     getSerialDeviceList(boost::optional<uint16_t> vendorID,
                         boost::optional<uint16_t> productID) {
         using boost::intrusive_ptr;
+
+        auto searchString = getPNPDeviceIdSearchString(vendorID, productID);
 
         HRESULT result;
         std::vector<USBSerialDevice> devices;
@@ -143,6 +218,8 @@ namespace usbserial {
             return devices;
         }
 
+        USBVidPidExtractor vidPidExtractor;
+
         intrusive_ptr<IWbemClassObject> wbemClassObj;
         ULONG numObjRet = 0;
         while (devEnum) {
@@ -153,46 +230,44 @@ namespace usbserial {
                 break;
             }
 
-            VARIANT vtPort;
-            VARIANT vtHardware;
-            VARIANT vtPath;
+            using comutils::Variant;
+            using comutils::get;
 
-            // Get the value of the Name property
-            hr = wbemClassObj->Get(L"DeviceID", 0, &vtPort, nullptr, nullptr);
-            std::string sPort = util::wideToUTF8String(vtPort.bstrVal);
+            /// DeviceID is the COM port name
+            Variant varPort;
+            hr = wbemClassObj->Get(L"DeviceID", 0, AttachVariant(varPort),
+                                   nullptr, nullptr);
+            std::string port =
+                util::wideToUTF8String(get<std::wstring>(varPort));
 
-            hr = wbemClassObj->Get(L"PNPDeviceID", 0, &vtHardware, nullptr,
+            /// PNPDeviceID is the hardware instance ID that has the VID:PID
+            /// embedded in it.
+            Variant varHardwareID;
+            hr = wbemClassObj->Get(L"PNPDeviceID", 0,
+                                   AttachVariant(varHardwareID), nullptr,
                                    nullptr);
-            std::string HardwID = util::wideToUTF8String(vtHardware.bstrVal);
+            std::string hardwareID =
+                util::wideToUTF8String(get<std::wstring>(varHardwareID));
 
-            hr = wbemClassObj->Get(L"__PATH", 0, &vtPath, nullptr, nullptr);
-            std::string devPath = util::wideToUTF8String(vtPath.bstrVal);
-
-            if ((vendorID) && (productID)) {
-
-                std::string deviceVID = std::to_string(*vendorID);
-                std::string devicePID = std::to_string(*productID);
-
-                std::regex vidPidRegEx("VID[\\s&\\*\\#_]?" + deviceVID +
-                                       "[\\s&\\*\\#_]?PID[\\s&\\*\\#_]?" +
-                                       devicePID);
-
-                // found a match
-                if (std::regex_search(HardwID, vidPidRegEx)) {
-
-                    USBSerialDevice newDevice(*vendorID, *productID, devPath,
-                                              sPort);
-                    devices.push_back(newDevice);
+            if (!searchString.empty()) {
+                if (hardwareID.find(searchString) == std::string::npos) {
+                    /// We had something to search for, and we didn't find it,
+                    /// go on.
+                    continue;
                 }
-            } else {
-                USBSerialDevice newDevice(*vendorID, *productID, devPath,
-                                          sPort);
-                devices.push_back(newDevice);
             }
 
-            VariantClear(&vtPort);
-            VariantClear(&vtHardware);
-            VariantClear(&vtPath);
+            auto vidPid = vidPidExtractor.getVidPid(hardwareID);
+            if (!vidPid) {
+                /// Couldn't parse the VID/PID - may not be a USB serial port.
+                continue;
+            }
+
+            /// On Windows (NT-based), the "full path" to a serial port with a
+            /// COM port name is \\.\COMx (where x is a number)
+            std::string path = "\\\\.\\" + port;
+
+            devices.emplace_back(vidPid->first, vidPid->second, path, port);
         }
 
         return devices;

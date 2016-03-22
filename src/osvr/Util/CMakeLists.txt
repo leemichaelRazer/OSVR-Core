@@ -29,7 +29,7 @@ configure_file(StdAlignWrapper.h.in "${CMAKE_CURRENT_BINARY_DIR}/StdAlignWrapper
 ###
 osvr_setup_lib_vars(Util)
 
-osvr_generate_x_macro(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ReportTypesX.h"
+osvr_generate_x_macro_now(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ReportTypesX.h"
     INVOCATION_NAME OSVR_INVOKE_REPORT_TYPES_XMACRO
     ELEMENTS
     ${OSVR_REPORT_TYPES})
@@ -43,6 +43,7 @@ set(API
     "${HEADER_LOCATION}/AnnotationMacrosC.h"
     "${HEADER_LOCATION}/AnyMap.h"
     "${HEADER_LOCATION}/AnyMap_fwd.h"
+    "${HEADER_LOCATION}/BasicTypeTraits.h"
     "${HEADER_LOCATION}/BoolC.h"
     "${HEADER_LOCATION}/BoostDeletable.h"
     "${HEADER_LOCATION}/BoostIsCopyConstructible.h"
@@ -53,12 +54,16 @@ set(API
     "${HEADER_LOCATION}/ClientReportTypesC.h"
     "${HEADER_LOCATION}/CSV.h"
     "${HEADER_LOCATION}/DefaultBool.h"
+    "${HEADER_LOCATION}/DefaultPort.h"
     "${HEADER_LOCATION}/Deletable.h"
     "${HEADER_LOCATION}/DeviceCallbackTypesC.h"
     "${HEADER_LOCATION}/EigenCoreGeometry.h"
     "${HEADER_LOCATION}/EigenExtras.h"
     "${HEADER_LOCATION}/EigenFilters.h"
     "${HEADER_LOCATION}/EigenInterop.h"
+    "${HEADER_LOCATION}/EigenQuatExponentialMap.h"
+    "${HEADER_LOCATION}/ExtractYaw.h"
+    "${HEADER_LOCATION}/Finally.h"
     "${HEADER_LOCATION}/Flag.h"
     "${HEADER_LOCATION}/GenericCaller.h"
     "${HEADER_LOCATION}/GenericDeleter.h"
@@ -80,7 +85,9 @@ set(API
     "${HEADER_LOCATION}/PluginCallbackTypesC.h"
     "${HEADER_LOCATION}/PluginRegContextC.h"
     "${HEADER_LOCATION}/PointerWrapper.h"
+    "${HEADER_LOCATION}/PortFlags.h"
     "${HEADER_LOCATION}/Pose3C.h"
+    "${HEADER_LOCATION}/ProcessUtils.h"
     "${HEADER_LOCATION}/ProgramOptionsToggleFlags.h"
     "${HEADER_LOCATION}/ProjectionMatrix.h"
     "${HEADER_LOCATION}/ProjectionMatrixFromFOV.h"
@@ -94,6 +101,7 @@ set(API
     "${HEADER_LOCATION}/ResourcePath.h"
     "${HEADER_LOCATION}/ReturnCodesC.h"
     "${HEADER_LOCATION}/SharedPtr.h"
+    "${HEADER_LOCATION}/SizedInt.h"
     "${HEADER_LOCATION}/StdDeletable.h"
     "${HEADER_LOCATION}/StdInt.h"
     "${HEADER_LOCATION}/StringBufferBuilder.h"
@@ -107,6 +115,7 @@ set(API
     "${HEADER_LOCATION}/TreeNodeFullPath.h"
     "${HEADER_LOCATION}/TreeTraversalVisitor.h"
     "${HEADER_LOCATION}/TypeSafeId.h"
+    "${HEADER_LOCATION}/TypeSafeIdHash.h"
     "${HEADER_LOCATION}/UniquePtr.h"
     "${HEADER_LOCATION}/UniqueContainer.h"
     "${HEADER_LOCATION}/Util.h"

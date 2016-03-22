@@ -30,6 +30,8 @@
 #include "LED.h"
 #include "LedIdentifier.h"
 #include "BeaconBasedPoseEstimator.h"
+#include "CameraParameters.h"
+#include "SBDBlobExtractor.h"
 #include <osvr/Util/ChannelCountC.h>
 
 // Library/third-party includes
@@ -40,6 +42,7 @@
 #include <vector>
 #include <list>
 #include <functional>
+#include <algorithm>
 
 // Define the constant below to provide debugging (window showing video and
 // behavior, printing tracked positions)
@@ -49,72 +52,128 @@ namespace osvr {
 namespace vbtracker {
     class VideoBasedTracker {
       public:
-        VideoBasedTracker(bool showDebugWindows = false);
+        VideoBasedTracker(ConfigParams const &params = ConfigParams{});
 
-        void addOculusSensor();
+        static BeaconIDPredicate getDefaultBeaconFixedPredicate() {
+            return [](int id) { return id <= 4; };
+        }
+
         /// @name Sensor addition methods
         /// @{
         /// @brief Adds a sensor, given an LedIdentifier and parameters to
         /// create a pose estimator.
         /// @param identifier Takes unique ownership of the passed LedIdentifier
         /// object
-        /// @param m A 3x3 camera matrix
-        /// @param d A 5-dimensional distortion parameter vector
+        /// @param camParams An object with the camera matrix and distortion
+        /// parameters.
         /// @param locations A list of the 3d locations (in mm) of each marker
+        /// @param emissionDirection Normalized vectors for each beacon in body
+        /// space giving their emission direction.
+        /// @param variance A single default base measurement variance used as a
+        /// starting point for all beacons.
+        /// @param autocalibrationFixedPredicate A function that, when given a
+        /// 1-based ID of a beacon, returns "true" if the autocalibration
+        /// routines should consider that beacon "fixed" and not subject to
+        /// autocalibration.
         /// @param requiredInliers How many "good" points must be available
         /// @param permittedOutliers How many additional "bad" points we can
         /// have
-        /// @todo Remove this raw pointer version.
-        void addSensor(LedIdentifier *identifier, DoubleVecVec const &m,
-                       std::vector<double> const &d,
+        void addSensor(LedIdentifierPtr &&identifier,
+                       CameraParameters const &camParams,
                        Point3Vector const &locations,
+                       Vec3Vector const &emissionDirection, double variance,
+                       BeaconIDPredicate const &autocalibrationFixedPredicate =
+                           getDefaultBeaconFixedPredicate(),
                        size_t requiredInliers = 4,
-                       size_t permittedOutliers = 2);
+                       size_t permittedOutliers = 2) {
+            addSensor(std::move(identifier), camParams, locations,
+                      emissionDirection, std::vector<double>{variance},
+                      autocalibrationFixedPredicate, requiredInliers,
+                      permittedOutliers);
+        }
+
         /// @overload
-        void addSensor(LedIdentifierPtr &&identifier, DoubleVecVec const &m,
-                       std::vector<double> const &d,
+        ///
+        /// For those who want the default variance but want to provide an
+        /// autocalibration fixed predicate or more.
+        void addSensor(LedIdentifierPtr &&identifier,
+                       CameraParameters const &camParams,
                        Point3Vector const &locations,
+                       Vec3Vector const &emissionDirection,
+                       BeaconIDPredicate const &autocalibrationFixedPredicate,
                        size_t requiredInliers = 4,
-                       size_t permittedOutliers = 2);
+                       size_t permittedOutliers = 2) {
+            addSensor(std::move(identifier), camParams, locations,
+                      emissionDirection, std::vector<double>{},
+                      autocalibrationFixedPredicate, requiredInliers,
+                      permittedOutliers);
+        }
         /// @overload
-        void addSensor(LedIdentifierPtr &&identifier, DoubleVecVec const &m,
-                       std::vector<double> const &d,
-                       Point3Vector const &locations, double variance,
-                       size_t requiredInliers = 4,
-                       size_t permittedOutliers = 2);
-        /// @overload
-        void addSensor(LedIdentifierPtr &&identifier, DoubleVecVec const &m,
-                       std::vector<double> const &d,
-                       Point3Vector const &locations,
-                       std::vector<double> const &variance,
-                       size_t requiredInliers = 4,
-                       size_t permittedOutliers = 2);
+        /// Takes a vector of default measurement variances, one per beacon. By
+        /// default (if empty) a default overall base measurement variance is
+        /// used. If only a single entry is in the vector, it is used for every
+        /// beacon.
+        ///
+        /// (This is actually the one that does the work.)
+        void addSensor(
+            LedIdentifierPtr &&identifier, CameraParameters const &camParams,
+            Point3Vector const &locations, Vec3Vector const &emissionDirection,
+            std::vector<double> const &variance = std::vector<double>{},
+            BeaconIDPredicate const &autocalibrationFixedPredicate =
+                getDefaultBeaconFixedPredicate(),
+            size_t requiredInliers = 4, size_t permittedOutliers = 2,
+            double beaconAutocalibErrorScale = 1);
         /// @}
 
         typedef std::function<void(OSVR_ChannelCount, OSVR_Pose3 const &)>
             PoseHandler;
 
-        /// @return true if user hit q to quit.
+        /// @brief The main method that processes an image into tracked poses.
+        /// @return true if user hit q to quit in a debug window, if such a
+        /// thing exists.
         bool processImage(cv::Mat frame, cv::Mat grayImage,
                           OSVR_TimeValue const &tv, PoseHandler handler);
 
-      private:
-        std::vector<cv::KeyPoint>
-        extractKeypoints(cv::Mat const &grayImage);
-        cv::KeyPoint enhanceKeypoint(cv::Mat const &grayImage,
-                                     cv::KeyPoint origKeypoint);
-        bool m_showDebugWindows; //< Should we show debugging windows?
+        /// For debug purposes
+        BeaconBasedPoseEstimator const &getFirstEstimator() const {
+            return *(m_estimators.front());
+        }
 
+        /// For debug purposes
+        BeaconBasedPoseEstimator &getFirstEstimator() {
+            return *(m_estimators.front());
+        }
+
+      private:
+        /// @overload
+        /// For advanced usage - this one requires YOU to add your beacons by
+        /// passing a functor (probably a lambda) to do so.
+        void addSensor(
+            LedIdentifierPtr &&identifier, CameraParameters const &camParams,
+            std::function<void(BeaconBasedPoseEstimator &)> const &beaconAdder,
+            size_t requiredInliers = 4, size_t permittedOutliers = 2);
+
+        void dumpKeypointDebugData(std::vector<cv::KeyPoint> const &keypoints);
+
+        void drawLedCircleOnStatusImage(Led const &led, bool filled,
+                                        cv::Vec3b color);
+        void drawRecognizedLedIdOnStatusImage(Led const &led);
+
+        bool m_debugHelpDisplayed = false;
         /// @name Images
         /// @{
         cv::Mat m_frame;
         cv::Mat m_imageGray;
         cv::Mat m_thresholdImage;
         cv::Mat m_imageWithBlobs;
-        cv::Mat *m_shownImage = &m_imageWithBlobs;
+        cv::Mat m_statusImage;
+        cv::Mat *m_shownImage = &m_statusImage;
+        int m_debugFrame = 0;
         /// @}
 
-        cv::SimpleBlobDetector::Params m_params;
+        ConfigParams m_params;
+        SBDBlobExtractor m_blobExtractor;
+        cv::SimpleBlobDetector::Params m_sbdParams;
 
         /// @brief Test (with asserts) what Ryan thinks are the invariants. Will
         /// inline right out of existence in non-debug builds.
@@ -125,6 +184,12 @@ namespace vbtracker {
             BOOST_ASSERT_MSG(m_identifiers.size() == m_estimators.size(),
                              "Expected to have as many identifier objects as "
                              "estimator objects");
+
+            for (auto &e : m_estimators) {
+                BOOST_ASSERT_MSG(
+                    e->getNumBeacons() > 4,
+                    "Expected each estimator to have at least 4 beacons");
+            }
         }
         /// @name Structures needed to do the tracking.
         /// @{
@@ -135,6 +200,9 @@ namespace vbtracker {
 
         /// @brief The pose that we report
         OSVR_PoseState m_pose;
+
+        /// A captured copy of the camera parameters;
+        CameraParameters m_camParams;
     };
 
 } // namespace vbtracker

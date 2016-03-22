@@ -9,11 +9,26 @@ if(NOT BUILD_USBSERIALENUM)
         osvr/USBSerial/USBSerialEnum.h)
 endif()
 
+if(BUILD_WITH_OPENCV)
+    set(LIBRARIES_osvr_Util_OpenCVTypeDispatch opencv_core)
+    set(LIBRARIES_osvr_PluginKit_ImagingInterface opencv_core)
+else()
+    list(APPEND IGNORED_HEADERS
+        osvr/Util/OpenCVTypeDispatch.h
+        osvr/PluginKit/ImagingInterface.h)
+endif()
+
 set(LIBRARIES_PluginKit libfunctionality::functionality)
 set(LIBRARIES_VRPNServer libfunctionality::functionality)
 set(LIBRARIES_TypePack osvrTypePack)
 
-set(COMMON_TEST_LIBRARIES jsoncpp_lib eigen-headers vendored-vrpn boost_thread)
+set(COMMON_TEST_LIBRARIES eigen-headers vendored-vrpn)
+if(TARGET JsonCpp::JsonCpp)
+    list(APPEND COMMON_TEST_LIBRARIES JsonCpp::JsonCpp)
+endif()
+if(TARGET boost_thread)
+    list(APPEND COMMON_TEST_LIBRARIES boost_thread)
+endif()
 if(TARGET boost_filesystem)
     list(APPEND COMMON_TEST_LIBRARIES boost_filesystem)
 endif()

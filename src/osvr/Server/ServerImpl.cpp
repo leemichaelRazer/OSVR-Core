@@ -35,11 +35,11 @@
 #include <osvr/Common/SystemComponent.h>
 #include <osvr/Common/CommonComponent.h>
 #include <osvr/Common/PathTreeFull.h>
-#include <osvr/Common/PathElementTypes.h>
 #include <osvr/Common/ProcessDeviceDescriptor.h>
 #include <osvr/Common/AliasProcessor.h>
 #include <osvr/Util/StringLiteralFileToString.h>
 #include <osvr/Common/Tracing.h>
+#include <osvr/Util/PortFlags.h>
 
 #include "osvr/Server/display_json.h" /// Fallback display descriptor.
 
@@ -64,9 +64,12 @@ namespace server {
         }
         return ret;
     }
-    ServerImpl::ServerImpl(connection::ConnectionPtr const &conn)
+    ServerImpl::ServerImpl(connection::ConnectionPtr const &conn,
+                           boost::optional<std::string> const &host,
+                           boost::optional<int> const &port)
         : m_conn(conn), m_ctx(make_shared<pluginhost::RegistrationContext>()),
-          m_systemComponent(nullptr), m_running(false), m_sleepTime(0) {
+          m_host(host.get_value_or("localhost")),
+          m_port(port.get_value_or(util::UseDefaultPort)) {
         if (!m_conn) {
             throw std::logic_error(
                 "Can't pass a null ConnectionPtr into Server constructor!");
@@ -101,9 +104,24 @@ namespace server {
             common::elements::StringElement(util::makeString(display_json));
         // Deal with updated device descriptors.
         m_conn->registerDescriptorHandler([&] { m_handleDeviceDescriptors(); });
+
+        // Set up handlers to enter/exit idle sleep mode.
+        // Can't do this with the nice wrappers on the CommonComponent of the
+        // system device, I suppose since people aren't really connecting to
+        // that device.
+        vrpnConn->register_handler(
+            vrpnConn->register_message_type(vrpn_got_first_connection),
+            &ServerImpl::m_exitIdle, this);
+        vrpnConn->register_handler(
+            vrpnConn->register_message_type(vrpn_dropped_last_connection),
+            &ServerImpl::m_enterIdle, this);
     }
 
-    ServerImpl::~ServerImpl() { stop(); }
+    ServerImpl::~ServerImpl() {
+        stop();
+        // Not unregistering idle handlers because doing so caused crashes, and
+        // I think that this object should outlive the connection anyway.
+    }
 
     void ServerImpl::start() {
         boost::unique_lock<boost::mutex> lock(m_runControl);
@@ -219,10 +237,8 @@ namespace server {
             shouldContinue = m_run.shouldContinue();
         }
 
-        if (m_sleepTime > 0) {
-            osvr::util::time::microsleep(m_sleepTime);
-        } else {
-            m_thread.yield();
+        if (m_currentSleepTime > 0) {
+            osvr::util::time::microsleep(m_currentSleepTime);
         }
         return shouldContinue;
     }
@@ -266,8 +282,10 @@ namespace server {
             /// Get the node
             auto &node = m_tree.getNodeByPath(path);
 
-            /// Create the DeviceElement and set it as the node value
-            auto elt = common::elements::DeviceElement{deviceName, server};
+            /// Create the DeviceElement and set it as the node value - assume
+            /// it's a VRPN device by default.
+            auto elt = common::elements::DeviceElement::createVRPNDeviceElement(
+                deviceName, server);
             elt.getDescriptor() = descriptorVal;
             node.value() = elt;
             m_treeDirty.set();
@@ -348,9 +366,9 @@ namespace server {
     void ServerImpl::setSleepTime(int microseconds) {
         m_sleepTime = microseconds;
     }
-
+#if 0
     int ServerImpl::getSleepTime() const { return m_sleepTime; }
-
+#endif
     void ServerImpl::m_handleDeviceDescriptors() {
         for (auto const &dev : m_conn->getDevices()) {
             auto const &descriptor = dev->getDeviceDescriptor();
@@ -359,9 +377,33 @@ namespace server {
                                  << dev->getName());
             } else {
                 m_treeDirty += common::processDeviceDescriptorForPathTree(
-                    m_tree, dev->getName(), descriptor);
+                    m_tree, dev->getName(), descriptor, m_port, m_host);
             }
         }
+    }
+
+    int ServerImpl::m_exitIdle(void *userdata, vrpn_HANDLERPARAM) {
+        auto self = static_cast<ServerImpl *>(userdata);
+        /// Conditional ensures that we don't "idle" faster than we run: Make
+        /// sure we're sleeping longer now than we will be once we exit idle.
+        if (self->m_currentSleepTime > self->m_sleepTime) {
+            OSVR_DEV_VERBOSE("Got first client connection, exiting idle mode.");
+            self->m_currentSleepTime = self->m_sleepTime;
+        }
+        return 0;
+    }
+
+    int ServerImpl::m_enterIdle(void *userdata, vrpn_HANDLERPARAM) {
+        auto self = static_cast<ServerImpl *>(userdata);
+
+        /// Conditional ensures that we don't "idle" faster than we run: Make
+        /// sure we're sleeping shorter now than we will be once we enter idle.
+        if (self->m_currentSleepTime < IDLE_SLEEP_TIME) {
+            OSVR_DEV_VERBOSE(
+                "Dropped last client connection, entering idle mode.");
+            self->m_currentSleepTime = IDLE_SLEEP_TIME;
+        }
+        return 0;
     }
 
 } // namespace server

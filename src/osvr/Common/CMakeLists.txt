@@ -201,15 +201,11 @@ target_link_libraries(${LIBNAME_FULL}
     PUBLIC
     osvrUtilCpp
     PRIVATE
-    jsoncpp_lib
+    JsonCpp::JsonCpp
     vendored-vrpn
     eigen-headers
     osvr_cxx11_flags
     ${OSVR_CODECVT_LIBRARIES})
-
-# Target-level dependency: make Util build first, because the Util build contains
-# the generated X-Macro header ReportTypesX that is included in ReportTraits.h
-add_dependencies(${LIBNAME_FULL} osvrUtil)
 
 if(OSVR_COMMON_TRACING_ETW)
     target_link_libraries(${LIBNAME_FULL} PRIVATE ETWProviders)
