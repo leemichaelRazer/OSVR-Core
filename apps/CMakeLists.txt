@@ -19,7 +19,7 @@ if(BUILD_CLIENT_APPS)
     target_link_libraries(osvr_print_tree
         osvrClientKitCpp
         osvrCommon
-        jsoncpp_lib
+        JsonCpp::JsonCpp
         boost_program_options
         osvr_cxx11_flags)
     set_target_properties(osvr_print_tree PROPERTIES
@@ -47,7 +47,7 @@ if(BUILD_CLIENT_APPS)
     target_link_libraries(osvr_dump_tree_json
         osvrClientKitCpp
         osvrCommon
-        jsoncpp_lib
+        JsonCpp::JsonCpp
         boost_program_options
         osvr_cxx11_flags)
     set_target_properties(osvr_dump_tree_json PROPERTIES
@@ -64,7 +64,7 @@ if(BUILD_CLIENT_APPS)
         ClientMainloop.h
         ClientMainloopThread.h)
     target_link_libraries(osvr_reset_yaw
-        jsoncpp_lib
+        JsonCpp::JsonCpp
         osvrClientKitCpp
         osvrClient
         osvrCommon
@@ -99,7 +99,7 @@ if(BUILD_SERVER_EXAMPLES)
     add_executable(BasicServer BasicServer.cpp)
     target_link_libraries(BasicServer
         osvrServer
-        jsoncpp_lib)
+        JsonCpp::JsonCpp)
     set_target_properties(BasicServer PROPERTIES
         FOLDER "OSVR Stock Applications")
     if(NOT WIN32)
@@ -122,7 +122,7 @@ if(BUILD_EXPERIMENTAL_APPS)
         WrapRoute.h)
     target_link_libraries(osvr_calibrate
         osvrServer
-        jsoncpp_lib
+        JsonCpp::JsonCpp
         osvrClientKitCpp
         osvrCommon
         eigen-headers
@@ -144,7 +144,7 @@ if(BUILD_EXPERIMENTAL_APPS)
         ClientMainloopThread.h
         RecomposeTransform.h)
     target_link_libraries(diagnose-rotation
-        jsoncpp_lib
+        JsonCpp::JsonCpp
         osvrClientKitCpp
         osvrClient
         osvrCommon
@@ -230,18 +230,43 @@ if(BUILD_SERVER_APP)
     set(data_installtree_dir ${SAMPLE_CONFIGS_DIR})
     set(FILE_OUTPUTS)
 
-    # Copy/install the default config file from the current directory.
-    set(DEFAULT_CONFIG_FILE osvr_server_config.json)
+    # Macro to easily copy for build and install a single file.
+    # Put in a macro because we do different things on Windows vs. other platforms,
+    # including installing different number of files.
+    macro(osvr_copy_file _infile _outfile)
+        list(APPEND FILE_OUTPUTS "${_infile}")
+        set(__comment "Copying ${_infile}")
+        if(NOT "${_infile}" STREQUAL "${_outfile}")
+            set(__comment "${__comment} to ${_outfile}")
+        endif()
+        add_custom_command(OUTPUT "${_infile}"
+            COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/${_infile}" "${data_buildtree_dir}/${_outfile}"
+            MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/${_infile}"
+            ${DEFAULT_CONFIG_EXTRA_ARGS}
+            COMMENT "${__comment}"
+            VERBATIM)
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${_infile}"
+            RENAME "${_outfile}"
+            DESTINATION "${data_installtree_dir}" COMPONENT Server)
+    endmacro()
 
-    list(APPEND FILE_OUTPUTS "${DEFAULT_CONFIG_FILE}")
-    add_custom_command(OUTPUT "${DEFAULT_CONFIG_FILE}"
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/${DEFAULT_CONFIG_FILE}" "${data_buildtree_dir}"
-        MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/${DEFAULT_CONFIG_FILE}"
-        ${DEFAULT_CONFIG_EXTRA_ARGS}
-        COMMENT "Copying ${DEFAULT_CONFIG_FILE}"
-        VERBATIM)
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${DEFAULT_CONFIG_FILE}"
-        DESTINATION "${data_installtree_dir}" COMPONENT Server)
+    # The name of the default config file.
+    set(DEFAULT_CONFIG_FILE osvr_server_config.json)
+    # Config file to use by default on Windows
+    set(DEFAULT_CONFIG_FILE_WIN sample-configs/osvr_server_config.HDK13DirectMode.sample.json)
+    # What we should call the normally-default (empty-ish) config file on Windows.
+    set(DEFAULT_CONFIG_FILE_ALTNAME osvr_server_config.autodetectall.json)
+
+    # Copy/install the default config file from the current directory.
+    if(WIN32)
+        # Copy the default empty config file to an alternate name.
+        osvr_copy_file(${DEFAULT_CONFIG_FILE} ${DEFAULT_CONFIG_FILE_ALTNAME})
+        # Copy the designated default config file for Windows to the right name to be the default.
+        osvr_copy_file(${DEFAULT_CONFIG_FILE_WIN} ${DEFAULT_CONFIG_FILE})
+    else()
+        # If we're not Windows, we just use the standard (autoconfiguring) config file.
+        osvr_copy_file(${DEFAULT_CONFIG_FILE} ${DEFAULT_CONFIG_FILE})
+    endif()
 
     # Copy/install subdirectories of JSON files
     osvr_copy_dir(displays *.json ${data_buildtree_dir} ${SAMPLE_CONFIGS_DIR} "JSON display descriptor")
@@ -253,4 +278,13 @@ if(BUILD_SERVER_APP)
     set_source_files_properties(${FILE_OUTPUTS} PROPERTIES SYMBOLIC TRUE)
     add_custom_target(copy_osvr_server_config_files ALL
         DEPENDS ${FILE_OUTPUTS})
+endif()
+
+# Simple application to list detected USB serial devices
+if(BUILD_USBSERIALENUM AND NOT ANDROID)
+    add_executable(osvr_list_usbserial osvr_list_usbserial.cpp)
+    target_include_directories(osvr_list_usbserial PRIVATE osvr::osvrUSBSerial)
+    target_link_libraries(osvr_list_usbserial osvrUSBSerial)
+    install(TARGETS osvr_list_usbserial
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
