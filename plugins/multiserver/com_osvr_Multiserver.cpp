@@ -207,27 +207,12 @@ class VRPNHardwareDetect : boost::noncopyable {
                     {
                         osvr::vrpnserver::VRPNDeviceRegistration reg2(ctx);
                         reg2.registerDevice(
-#ifndef Never
 							new vrpn_Tracker_DeadReckoning_Rotation(
 							reg2.useDecoratedName(m_data.getName(
 							"OSVRHackerDevKitPrediction")),
 							reg2.getVRPNConnection(), "*" + decName, 1,
-							1.0 / 60.0, false));
-#else
-							// ML
-							// there is an extra arg that I will have to track down
-							new vrpn_Tracker_DeadReckoning_Rotation(
-                                reg2.useDecoratedName(m_data.getName(
-                                    "OSVRHackerDevKitPrediction")),
-                                reg2.getVRPNConnection(), "*" + decName, 1,
-<<<<<<< HEAD
-                                1.0 / 60.0));
-#endif
-								reg2.setDeviceDescriptor(osvr::util::makeString(
-=======
                                 32.0e-3, false));
                         reg2.setDeviceDescriptor(osvr::util::makeString(
->>>>>>> upstream/master
                             com_osvr_Multiserver_OSVRHackerDevKit_json));
                     }
                     continue;
